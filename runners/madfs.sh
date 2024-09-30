@@ -14,7 +14,7 @@ BENCH_FILE_SIZE=1 \
 BENCH_NUM_ITER=$WORKLOAD \
 PMEM_PATH=${PM_MOUNT} \
 MADFS_LOG_LEVEL=4 \
-./HawkSet \
+../scripts/HawkSet \
 	${@:1} \
 	-- \
 	${TOOL_ROOT}/MadFS/build-debug/micro_mt \

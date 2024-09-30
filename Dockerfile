@@ -1,0 +1,6 @@
+ARG HAWKSET_VERSION
+
+FROM hawkset-${HAWKSET_VERSION}
+COPY patches ${TOOL_ROOT}/patches
+
+

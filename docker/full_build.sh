@@ -1,9 +1,12 @@
 #!/usr/bin/bash
 
-
+echo Building FAST-FAIR
 ./build.sh ffair
-./build.sh montage
+echo Building P-CLHT
 ./build.sh pclht
-./build.sh pmemkv
+echo Building Durinn\'s target applications
+./build.sh durinn
+echo Building Turbohash
 ./build.sh turbohash
-#./build.sh madfs
+echo Building MadFS
+./build.sh madfs

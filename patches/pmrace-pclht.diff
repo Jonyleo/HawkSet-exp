@@ -1,0 +1,2473 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index bce20d7..0e06027 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,3 +1,6 @@
++set(CMAKE_C_COMPILER "afl-clang-fast")
++set(CMAKE_CXX_COMPILER "afl-clang-fast++")
++
+ cmake_minimum_required(VERSION 2.8)
+ project(RECIPE)
+ 
+@@ -8,7 +11,9 @@ else()
+     message(STATUS "Build type is set to ${CMAKE_BUILD_TYPE}")
+ endif()
+ 
+-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -march=native -mrtm -mcx16 -mavx -mavx2 -mbmi2 -mlzcnt -Wno-deprecated-declarations -Wall -Wextra -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -faligned-new=64 -DNDEBUG")
++set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -march=native -mrtm -mcx16 -mavx -mavx2 -mbmi2 -mlzcnt -Wno-deprecated-declarations -Wall -Wextra -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -faligned-new=64 -DNDEBUG -fheinous-gnu-extensions")
++
++set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native -mrtm -mcx16 -mavx -mavx2 -mbmi2 -mlzcnt -Wno-deprecated-declarations -Wall -Wextra -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -faligned-new=64 -DNDEBUG -fheinous-gnu-extensions")
+ 
+ execute_process(COMMAND cat /proc/cpuinfo COMMAND grep clflush OUTPUT_VARIABLE ENABLE_CLFLUSH)
+ execute_process(COMMAND cat /proc/cpuinfo COMMAND grep clflushopt OUTPUT_VARIABLE ENABLE_CLFLUSHOPT)
+@@ -54,7 +59,6 @@ else()
+ endif()
+ 
+ if(ENABLE_AVX2 AND ENABLE_BMI2)
+-    set(HOT TRUE)
+ else()
+     set(HOT FALSE)
+     message(STATUS "Cannot find avx2 & bmi2 --> HOT (Height Optimized Trie) is disabled")
+@@ -80,25 +84,32 @@ include_directories(P-HOT/libs/hot/commons/include P-HOT/libs/hot/rowex/include
+     P-HOT/libs/idx/content-helpers/include P-HOT/libs/idx/utils/include P-HOT/libs/profile-lib/include)
+ endif()
+ 
++set(PMDK_DIR $ENV{PMDK_DIR})
++if (NOT PMDK_DIR)
++    message(FATAL_ERROR "The environmantal variable 'PMDK_DIR' is required!")
++else()
++    message(STATUS "PMDK_DIR is set to ${PMDK_DIR}")
++endif()
++
+ include_directories(third-party/CCEH)
+ include_directories(P-Masstree)
+ include_directories(P-CLHT/include P-CLHT/external/include)
+ include_directories(P-BwTree)
++include_directories(include ${PMDK_DIR}/include)
+ 
+ find_library(JemallocLib jemalloc)
+ find_library(TbbLib tbb)
+ find_package (Threads)
++link_directories(${PMDK_DIR}/lib/pmdk_debug)
+ 
+ if (HOT)
+ set(INDEX_FILES P-ART/Tree.cpp P-Masstree/masstree.cpp third-party/FAST_FAIR/btree.h
+     P-HOT/libs/hot/rowex/include/hot/rowex/HOTRowex.hpp third-party/CCEH/src/CCEH_MSB.cpp
+-    third-party/CCEH/src/Level_hashing.cpp P-BwTree/src/bwtree.cpp
+-    third-party/WOART/woart.cpp P-CLHT/src/clht_lb_res.c P-CLHT/src/clht_gc.c
++    P-CLHT/src/clht_lb_res.c P-CLHT/src/clht_gc.c
+     P-CLHT/external/sspfd/sspfd.c P-CLHT/external/ssmem/src/ssmem.c)
+ else()
+ set(INDEX_FILES P-ART/Tree.cpp third-party/FAST_FAIR/btree.h third-party/CCEH/src/CCEH_MSB.cpp
+-    third-party/CCEH/src/Level_hashing.cpp P-BwTree/src/bwtree.cpp P-Masstree/masstree.cpp
+-    P-BwTree/test/test_suite.cpp third-party/WOART/woart.cpp
++    P-Masstree/masstree.cpp
+     P-CLHT/src/clht_lb_res.c P-CLHT/src/clht_gc.c P-CLHT/external/sspfd/sspfd.c
+     P-CLHT/external/ssmem/src/ssmem.c)
+ endif()
+@@ -110,4 +121,4 @@ target_link_libraries(Indexes ${TbbLib} ${JemallocLib} ${CMAKE_THREAD_LIBS_INIT}
+ set(YCSB_TEST ycsb.cpp)
+ add_executable(ycsb ${YCSB_TEST})
+ 
+-target_link_libraries(ycsb Indexes atomic boost_system boost_thread)
++target_link_libraries(ycsb Indexes atomic boost_system boost_thread pmemobj pmem)
+diff --git a/P-CLHT/CMakeLists.txt b/P-CLHT/CMakeLists.txt
+index 8d76ac4..0b81fcc 100644
+--- a/P-CLHT/CMakeLists.txt
++++ b/P-CLHT/CMakeLists.txt
+@@ -8,7 +8,11 @@ else()
+     message(STATUS "Build type is set to ${CMAKE_BUILD_TYPE}")
+ endif()
+ 
+-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -march=native -mrtm -mcx16 -mavx -mavx2 -mbmi2 -mlzcnt -Wno-deprecated-declarations -Wall -Wextra -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -faligned-new=64 -DNDEBUG")
++set(LLVM_DIR $ENV{LLVM_DIR})
++set(CMAKE_C_COMPILER "clang")
++set(CMAKE_CXX_COMPILER "clang++")
++
++set(COMMON_FLAGS "-march=native -mavx -Wno-deprecated-declarations -Wall -Wextra -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -faligned-new=64")
+ 
+ execute_process(COMMAND cat /proc/cpuinfo COMMAND grep clflush OUTPUT_VARIABLE ENABLE_CLFLUSH)
+ execute_process(COMMAND cat /proc/cpuinfo COMMAND grep clflushopt OUTPUT_VARIABLE ENABLE_CLFLUSHOPT)
+@@ -16,9 +20,11 @@ execute_process(COMMAND cat /proc/cpuinfo COMMAND grep clwb OUTPUT_VARIABLE ENAB
+ 
+ if(ENABLE_CLWB)
+     add_definitions(-DCLWB)
++    set(COMMON_FLAGS "${COMMON_FLAGS} -mclwb")
+     message(STATUS "Looking for clwb instruction - found")
+ elseif(ENABLE_CLFLUSHOPT)
+     add_definitions(-DCLFLUSH_OPT)
++    set(COMMON_FLAGS "${COMMON_FLAGS} -mclflushopt")
+     message(STATUS "Looking for clwb instruction - not found")
+     message(STATUS "Looking for clflushopt instruction - found")
+ elseif(ENABLE_CLFLUSH)
+@@ -30,17 +36,51 @@ else()
+     message(FATAL_ERROR "Cannot find any flush instructions (clflush, clflushopt, clwb)")
+ endif()
+ 
++set(PMRACE_DIR $ENV{PMRACE_DIR})
++
++if (NOT PMRACE_DIR)
++    message(FATAL_ERROR "The environmantal variable 'PMRACE_DIR' is required!")
++else()
++    message(STATUS "PMRACE_DIR is set to ${PMRACE_DIR}")
++endif()
++
++set(HOOK_FLAGS "-Xclang -load -Xclang ${PMRACE_DIR}/instrument/libPMRacePass.so -mllvm -coverage-path -mllvm output/cov -mllvm -race-path -mllvm output/race.csv -mllvm -unflushed-path -mllvm output/unflushed.csv -mllvm -meta-path -mllvm $@.json -mllvm -pmrace-mode -mllvm pmdk -mllvm -dfsan-abilist=${PMRACE_DIR}/instrument/pmrace-ABI.txt -fheinous-gnu-extensions -g -O0")
++
++set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMMON_FLAGS} ${HOOK_FLAGS} -std=c++17")
++
++set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMMON_FLAGS} ${HOOK_FLAGS}")
++
++add_compile_options("-fsanitize=dataflow")
++link_libraries("-fsanitize=dataflow")
++
++add_compile_options("-stdlib=libc++")
++link_libraries("-stdlib=libc++")
++
+ add_definitions(-DADD_PADDING)
+ 
+ include_directories(include external/include)
++include_directories(include ${LLVM_DIR}/include/c++/v1)
++include_directories(include ${PMRACE_DIR}/deps/pmdk/install/include)
+ 
+-find_library(JemallocLib jemalloc)
++
++# disable jemalloc for dfsan
++# find_library(JemallocLib jemalloc)
+ find_library(TbbLib tbb)
+ find_package (Threads)
++link_directories(${LLVM_DIR}/lib)
++link_directories(${PMRACE_DIR}/instrument)
++link_directories(${PMRACE_DIR}/deps/pmdk/install/lib/pmdk_debug)
+ 
+-set(P_CLHT_TEST example.cpp src/clht_lb_res.c src/clht_gc.c
+-    external/sspfd/sspfd.c external/ssmem/src/ssmem.c)
+-add_executable(example ${P_CLHT_TEST})
++# set(EXAMPLE_SRC example.cpp src/clht_lb_res.c src/clht_gc.c
++#     external/sspfd/sspfd.c external/ssmem/src/ssmem.c)
++# add_executable(example ${EXAMPLE_SRC})
++# target_link_libraries(example ${TbbLib} ${JemallocLib} boost_system
++#     boost_thread pthread pmemobj pmem PMRaceHook)
+ 
+-target_link_libraries(example ${TbbLib} ${JemallocLib} boost_system
+-    boost_thread pthread pmemobj pmem)
++set(DRIVER_SRC driver.cpp src/clht_lb_res.c src/clht_gc.c
++    external/sspfd/sspfd.c external/ssmem/src/ssmem.c)
++add_executable(driver ${DRIVER_SRC})
++# target_link_libraries(driver ${TbbLib} ${JemallocLib} boost_system
++#     boost_thread pthread pmemobj pmem PMRaceHook)
++target_link_libraries(driver ${TbbLib} boost_system
++    boost_thread pthread pmemobj pmem PMRaceHook)
+\ No newline at end of file
+diff --git a/P-CLHT/driver.cpp b/P-CLHT/driver.cpp
+new file mode 100644
+index 0000000..34a52e7
+--- /dev/null
++++ b/P-CLHT/driver.cpp
+@@ -0,0 +1,199 @@
++#include <iostream>
++#include <chrono>
++#include <random>
++#include <cstring>
++#include <vector>
++#include <fstream>
++#include <stdio.h>
++#include <sstream>
++#include <stdlib.h>
++#include "tbb/tbb.h"
++
++#include <algorithm>
++#include <array>
++#include <atomic>
++#include <cassert>
++#include <chrono>
++#include <thread>
++#include <unordered_set>
++#include <cstddef>
++#include <vector>
++#include <mutex>
++#include <sys/types.h>
++#include <sys/wait.h>
++
++using namespace std;
++
++#include "clht_lb_res.h"
++#include "ssmem.h"
++
++typedef struct thread_data {
++    uint32_t id;
++    clht_t *ht;
++    uint32_t count;
++} thread_data_t;
++
++typedef struct barrier {
++    pthread_cond_t complete;
++    pthread_mutex_t mutex;
++    int count;
++    int crossing;
++} barrier_t;
++
++void barrier_init(barrier_t *b, int n) {
++    pthread_cond_init(&b->complete, NULL);
++    pthread_mutex_init(&b->mutex, NULL);
++    b->count = n;
++    b->crossing = 0;
++}
++
++void barrier_cross(barrier_t *b) {
++    pthread_mutex_lock(&b->mutex);
++    b->crossing++;
++    if (b->crossing < b->count) {
++        pthread_cond_wait(&b->complete, &b->mutex);
++    } else {
++        pthread_cond_broadcast(&b->complete);
++        b->crossing = 0;
++    }
++    pthread_mutex_unlock(&b->mutex);
++}
++
++barrier_t barrier;
++
++
++#ifndef __AFL_FUZZ_TESTCASE_LEN
++  ssize_t fuzz_len;
++  #define __AFL_FUZZ_TESTCASE_LEN fuzz_len
++  unsigned char fuzz_buf[1024000];
++  #define __AFL_FUZZ_TESTCASE_BUF fuzz_buf
++  #define __AFL_FUZZ_INIT() void sync()
++  #define __AFL_INIT() ((fuzz_len = read(0, fuzz_buf, sizeof(fuzz_buf))) > 0 ? 1 : 0)
++#endif
++
++__AFL_FUZZ_INIT();
++std::string get_workload_path();
++void run(char **argv) {
++    std::cout << "Simple Example of P-CLHT" << std::endl;
++
++    int num_thread = atoi(argv[1]);
++    tbb::task_scheduler_init init(num_thread);
++    unsigned char *afl_testcase_buf;
++    ssize_t afl_testcase_len;
++
++    __AFL_INIT();
++    afl_testcase_buf = __AFL_FUZZ_TESTCASE_BUF;
++    afl_testcase_len = __AFL_FUZZ_TESTCASE_LEN;
++
++    std::vector<std::istringstream> cmd_streams;
++    char *tok = NULL;
++    int i;
++
++    for (i = 0; i < num_thread; ++i) {
++        if (i == 0) {
++            tok = strtok((char *)afl_testcase_buf, "\t");
++        } else {
++            tok = strtok(NULL, "\t");
++        }
++
++        if (tok == NULL) {
++            cmd_streams.emplace_back(string());
++        } else {
++            cmd_streams.emplace_back(tok);
++        }
++    }
++
++    printf("operation,n,ops/s\n");
++
++    clht_t *hashtable = clht_create(2);
++
++    barrier_init(&barrier, num_thread);
++
++    thread_data_t *tds = (thread_data_t *) malloc(num_thread * sizeof(thread_data_t));
++    std::ofstream workload_out(get_workload_path()); std::mutex workload_m;
++    std::atomic<int> next_thread_id;
++
++    {
++        // Load
++        auto starttime = std::chrono::system_clock::now();
++        next_thread_id.store(0);
++        auto func = [&]() {
++            using namespace std::chrono;
++            int thread_id = next_thread_id.fetch_add(1);
++            uint64_t k, v;
++            char op;
++
++            tds[thread_id].id = thread_id;
++            tds[thread_id].ht = hashtable;
++            tds[thread_id].count = 0;
++
++            // uint64_t start_key = keys.size() / num_thread * (uint64_t)thread_id;
++            // uint64_t end_key = start_key + keys.size() / num_thread;
++
++            clht_gc_thread_init(tds[thread_id].ht, tds[thread_id].id);
++            barrier_cross(&barrier);
++
++            while (cmd_streams[thread_id] >> op) {
++                if (op == 'i') {
++                    cmd_streams[thread_id] >> std::hex >> k >> v; std::stringstream ss; ss << op << ";" << k << ";" << v << std::endl; workload_m.lock(); workload_out << ss.str(); workload_m.unlock();
++                    clht_put(tds[thread_id].ht, k, v);
++                    std::cout << "[" << duration_cast< milliseconds >(system_clock::now().time_since_epoch()).count() <<  "] "
++                            << "worker-" << thread_id << " puts " << k << std::endl;
++                } else if (op == 'd') {
++                    cmd_streams[thread_id] >> std::hex >> k; std::stringstream ss; ss << op << ";" << k << std::endl; workload_m.lock(); workload_out << ss.str(); workload_m.unlock();
++                    clht_remove(tds[thread_id].ht, k);
++                } else if (op == 'g') {
++                    cmd_streams[thread_id] >> std::hex >> k; std::stringstream ss; ss << op << ";" << k << std::endl; workload_m.lock(); workload_out << ss.str(); workload_m.unlock();
++                    clht_get(tds[thread_id].ht, k);
++                    std::cout << "[" << duration_cast< milliseconds >(system_clock::now().time_since_epoch()).count() <<  "] "
++                            << "worker-" << thread_id << " gets " << k << std::endl;
++                } else if (op == 'u') {
++                    cmd_streams[thread_id] >> std::hex >> k >> v; std::stringstream ss; ss << op << ";" << k << ";" << v << std::endl; workload_m.lock(); workload_out << ss.str(); workload_m.unlock();
++                    clht_update(tds[thread_id].ht, k, v);
++                } else {
++                    std::cerr << "Unsupported cmd\n";
++                    abort();
++                }
++                tds[thread_id].count++;
++                std::cout << "[" << duration_cast< milliseconds >(system_clock::now().time_since_epoch()).count() <<  "] ";
++                std::cout << "worker-" << thread_id << " completes." << std::endl;
++            }
++        };
++
++        std::vector<std::thread> thread_group;
++
++        for (int i = 0; i < num_thread; i++)
++            thread_group.push_back(std::thread{func});
++
++        size_t total_ops = 0;
++        for (int i = 0; i < num_thread; i++) {
++            thread_group[i].join();
++            total_ops += tds[i].count;
++        }
++
++        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
++                std::chrono::system_clock::now() - starttime);
++        printf("Total: %lu ops\n", total_ops);
++        printf("Throughput: %f ops/us\n", (total_ops * 1.0) / duration.count());
++    }
++    // clht_gc_destroy(hashtable);
++}
++
++int main(int argc, char **argv) {
++    if (argc != 2) {
++        printf("usage: %s [nthreads]\nnthreads: number of threads (integer)\n", argv[0]);
++        return 1;
++    }
++
++    run(argv);
++    return 0;
++}
++
++
++std::string get_workload_path() {
++  std::string path = getenv("PMRACE_RACE_PATH");
++
++  path.replace(path.cend()-8, path.cend(), "workload.csv");
++
++  return path;
++}
+\ No newline at end of file
+diff --git a/P-CLHT/example.cpp b/P-CLHT/example.cpp
+index 90089c0..73cc557 100644
+--- a/P-CLHT/example.cpp
++++ b/P-CLHT/example.cpp
+@@ -136,7 +136,7 @@ void run(char **argv) {
+                 std::chrono::system_clock::now() - starttime);
+         printf("Throughput: run, %f ,ops/us\n", (n * 1.0) / duration.count());
+     }
+-    clht_gc_destroy(hashtable);
++    // clht_gc_destroy(hashtable);
+ 
+     delete[] keys;
+ }
+diff --git a/P-CLHT/external/ssmem/src/ssmem.c b/P-CLHT/external/ssmem/src/ssmem.c
+index 7378df4..ef01165 100644
+--- a/P-CLHT/external/ssmem/src/ssmem.c
++++ b/P-CLHT/external/ssmem/src/ssmem.c
+@@ -166,7 +166,7 @@ ssmem_list_node_new(void* mem, ssmem_list_t* next)
+ /* 
+  *
+  */
+-inline ssmem_released_t*
++ssmem_released_t*
+ ssmem_released_node_new(void* mem, ssmem_released_t* next)
+ {
+   ssmem_released_t* rel;
+diff --git a/P-CLHT/include/atomic_ops.h b/P-CLHT/include/atomic_ops.h
+index 6563315..b3b360f 100644
+--- a/P-CLHT/include/atomic_ops.h
++++ b/P-CLHT/include/atomic_ops.h
+@@ -225,11 +225,11 @@ uint8_t oldval;
+ #define CAS_U32(a,b,c) __sync_val_compare_and_swap(a,b,c)
+ #define CAS_U64(a,b,c) __sync_val_compare_and_swap(a,b,c)
+ //Swap
+-#define SWAP_PTR(a,b) swap_pointer(a,b)
+-#define SWAP_U8(a,b) swap_uint8(a,b)
+-#define SWAP_U16(a,b) swap_uint16(a,b)
+-#define SWAP_U32(a,b) swap_uint32(a,b)
+-#define SWAP_U64(a,b) swap_uint64(a,b)
++#define SWAP_PTR(a,b) __atomic_exchange_n(a, b, __ATOMIC_SEQ_CST)
++#define SWAP_U8(a,b) __atomic_exchange_n(a, b, __ATOMIC_SEQ_CST)
++#define SWAP_U16(a,b) __atomic_exchange_n(a, b, __ATOMIC_SEQ_CST)
++#define SWAP_U32(a,b) __atomic_exchange_n(a, b, __ATOMIC_SEQ_CST)
++#define SWAP_U64(a,b) __atomic_exchange_n(a, b, __ATOMIC_SEQ_CST)
+ //Fetch-and-increment
+ #define FAI_U8(a) __sync_fetch_and_add(a,1)
+ #define FAI_U16(a) __sync_fetch_and_add(a,1)
+@@ -252,7 +252,7 @@ uint8_t oldval;
+ #define DAF_U32(a) __sync_sub_and_fetch(a,1)
+ #define DAF_U64(a) __sync_sub_and_fetch(a,1)
+ //Test-and-set
+-#define TAS_U8(a) tas_uint8(a)
++#define TAS_U8(a) __atomic_exchange_n(a, (uint8_t)0xFF, __ATOMIC_SEQ_CST)
+ //Memory barrier
+ #define MEM_BARRIER __sync_synchronize()
+ //Relax CPU
+diff --git a/P-CLHT/include/clht.h b/P-CLHT/include/clht.h
+new file mode 100644
+index 0000000..acbb7f7
+--- /dev/null
++++ b/P-CLHT/include/clht.h
+@@ -0,0 +1,379 @@
++/*   
++ *   File: clht.h
++ *   Author: Vasileios Trigonakis <vasileios.trigonakis@epfl.ch>
++ *   Description: CLHT common interface
++ *   clht.h is part of ASCYLIB
++ *
++ * The MIT License (MIT)
++ *
++ * Copyright (c) 2014 Vasileios Trigonakis <vasileios.trigonakis@epfl.ch>
++ *	      	      Distributed Programming Lab (LPD), EPFL
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a copy of
++ * this software and associated documentation files (the "Software"), to deal in
++ * the Software without restriction, including without limitation the rights to
++ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
++ * the Software, and to permit persons to whom the Software is furnished to do so,
++ * subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in all
++ * copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
++ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
++ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
++ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
++ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
++ *
++ */
++
++#ifndef _CLHT_H_
++#define _CLHT_H_
++
++#include <stdlib.h>
++#include <stdio.h>
++#include <inttypes.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#define true 1
++#define false 0
++
++/* #define DEBUG */
++
++#if defined(DEBUG)
++#  define DPP(x)	x++				
++#else
++#  define DPP(x)
++#endif
++
++#define CACHE_LINE_SIZE    64
++
++#define MAP_INVLD 0
++#define MAP_VALID 1
++#define MAP_INSRT 2
++
++#define KEY_BUCKT 3
++#define ENTRIES_PER_BUCKET KEY_BUCKT
++
++#define CLHT_DO_GC                  1
++#define CLHT_PERC_FULL_HALVE        2
++#define CLHT_PERC_FULL_DOUBLE       15
++#define CLHT_OCCUP_AFTER_RES        40
++#define CLHT_INC_EMERGENCY          2
++#define CLHT_NO_EMPTY_SLOT_TRIES    16
++#define CLHT_GC_HT_VERSION_USED(ht) clht_gc_thread_version(ht)
++#define LOAD_FACTOR                 2
++
++#ifndef ALIGNED
++#  if __GNUC__ && !SCC
++#    define ALIGNED(N) __attribute__ ((aligned (N)))
++#  else
++#    define ALIGNED(N)
++#  endif
++#endif
++
++#define likely(x)       __builtin_expect((x), 1)
++#define unlikely(x)     __builtin_expect((x), 0)
++
++#if defined(__sparc__)
++#  define PREFETCHW(x) 
++#  define PREFETCH(x) 
++#  define PREFETCHNTA(x) 
++#  define PREFETCHT0(x) 
++#  define PREFETCHT1(x) 
++#  define PREFETCHT2(x) 
++
++#  define PAUSE    asm volatile("rd    %%ccr, %%g0\n\t" \
++				::: "memory")
++#  define _mm_pause() PAUSE
++#  define _mm_mfence() __asm__ __volatile__("membar #LoadLoad | #LoadStore | #StoreLoad | #StoreStore");
++#  define _mm_lfence() __asm__ __volatile__("membar #LoadLoad | #LoadStore");
++#  define _mm_sfence() __asm__ __volatile__("membar #StoreLoad | #StoreStore");
++
++
++#elif defined(__tile__)
++#  define _mm_lfence() arch_atomic_read_barrier()
++#  define _mm_sfence() arch_atomic_write_barrier()
++#  define _mm_mfence() arch_atomic_full_barrier()
++#  define _mm_pause() cycle_relax()
++#endif
++
++#define CAS_U64_BOOL(a, b, c) (CAS_U64(a, b, c) == b)
++static inline int
++is_power_of_two (unsigned int x) 
++{
++  return ((x != 0) && !(x & (x - 1)));
++}
++
++
++typedef uintptr_t clht_addr_t;
++typedef volatile uintptr_t clht_val_t;
++typedef uint64_t clht_snapshot_all_t;
++
++typedef union
++{
++  volatile uint64_t snapshot;
++  struct
++  {
++#if KEY_BUCKT == 4
++    uint32_t version;
++#elif KEY_BUCKT == 6
++    uint16_t version;
++#else
++    uint32_t version;
++#endif
++    uint8_t map[KEY_BUCKT];
++  };
++} clht_snapshot_t;
++
++#if __GNUC__ > 4 && __GNUC_MINOR__ > 4
++// _Static_assert (sizeof(clht_snapshot_t) == 8, "sizeof(clht_snapshot_t) == 8");
++#endif
++
++typedef volatile struct ALIGNED(CACHE_LINE_SIZE) bucket_s
++{
++  union
++  {
++    volatile uint64_t snapshot;
++    struct
++    {
++#if KEY_BUCKT == 4
++      uint32_t version;
++#elif KEY_BUCKT == 6
++      uint16_t version;
++#else
++      uint32_t version;
++/* #  error "KEY_BUCKT should be either 4 or 6" */
++#endif
++      uint8_t map[KEY_BUCKT];
++    };
++  };
++  clht_addr_t key[KEY_BUCKT];
++  clht_val_t  val[KEY_BUCKT];
++  volatile struct bucket_s* padding;
++} bucket_t;
++
++#if __GNUC__ > 4 && __GNUC_MINOR__ > 4
++// _Static_assert (sizeof(bucket_t) % 64 == 0, "sizeof(bucket_t) == 64");
++#endif
++
++#if defined(__tile__)
++typedef volatile uint32_t clht_lock_t;
++#else
++typedef volatile uint8_t clht_lock_t;
++#endif
++/* typedef volatile uint64_t clht_lock_t; */
++#define CLHT_LOCK_FREE 0
++#define CLHT_LOCK_ACQR 1
++
++#define CLHT_CHECK_RESIZE(w)				\
++  while (unlikely(w->resize_lock == CLHT_LOCK_ACQR))	\
++    {							\
++      _mm_pause();					\
++      CLHT_GC_HT_VERSION_USED(w->ht);			\
++    }
++
++#define CLHT_LOCK_RESIZE(w)						\
++  (CAS_U8(&w->resize_lock, CLHT_LOCK_FREE, CLHT_LOCK_ACQR) == CLHT_LOCK_FREE)
++
++#define CLHT_RLS_RESIZE(w)			\
++  w->resize_lock = CLHT_LOCK_FREE
++
++#define TRYLOCK_ACQ(lock)			\
++  TAS_U8(lock)
++
++#define TRYLOCK_RLS(lock)			\
++  lock = CLHT_LOCK_FREE
++
++
++typedef struct ALIGNED(CACHE_LINE_SIZE) clht
++{
++  union
++  {
++    struct
++    {
++      struct clht_hashtable_s* ht;
++      uint8_t next_cache_line[CACHE_LINE_SIZE - (sizeof(void*))];
++      struct clht_hashtable_s* ht_oldest;
++      struct ht_ts* version_list;
++      size_t version_min;
++      volatile clht_lock_t resize_lock;
++      volatile clht_lock_t gc_lock;
++      volatile clht_lock_t status_lock;
++    };
++    uint8_t padding[2 * CACHE_LINE_SIZE];
++  };
++} clht_t;
++
++typedef struct ALIGNED(CACHE_LINE_SIZE) clht_hashtable_s
++{
++  union
++  {
++    struct
++    {
++      size_t num_buckets;
++      bucket_t* table;
++      size_t hash;
++      size_t version;
++      uint8_t next_cache_line[CACHE_LINE_SIZE - (3 * sizeof(size_t)) - (sizeof(void*))];
++      struct clht_hashtable_s* table_tmp;
++      struct clht_hashtable_s* table_prev;
++      struct clht_hashtable_s* table_new;
++      volatile uint32_t num_expands;
++      union
++      {
++	volatile uint32_t num_expands_threshold;
++	uint32_t num_buckets_prev;
++      };
++      volatile int32_t is_helper;
++      volatile int32_t helper_done;
++      size_t version_min;
++    };
++    uint8_t padding[2*CACHE_LINE_SIZE];
++  };
++} clht_hashtable_t;
++
++extern uint64_t __ac_Jenkins_hash_64(uint64_t key);
++
++/* Hash a key for a particular hashtable. */
++uint64_t clht_hash(clht_hashtable_t* hashtable, clht_addr_t key);
++
++
++static inline int
++snap_get_empty_index(uint64_t snap)
++{
++  clht_snapshot_t s = { .snapshot = snap };
++  int i;
++  for (i = 0; i < KEY_BUCKT; i++)
++    {
++      if (s.map[i] == MAP_INVLD)
++	{
++	  return i;
++	}
++    }
++  return -1;
++}
++
++static inline int
++keys_get_empty_index(clht_addr_t* keys)
++{
++  int i;
++  for (i = 0; i < KEY_BUCKT; i++)
++    {
++      if (keys[i] == 0)
++	{
++	  return i;
++	}
++    }
++  return -1;
++}
++
++static inline int
++buck_get_empty_index(bucket_t* b, uint64_t snap)
++{
++  clht_snapshot_t s = { .snapshot = snap };
++
++  int i;
++  for (i = 0; i < KEY_BUCKT; i++)
++    {
++      if (b->key[i] == 0 && s.map[i] != MAP_INSRT)
++	{
++	  return i;
++	}
++    }
++  return -1;
++}
++
++
++static inline int
++vals_get_empty_index(clht_val_t* vals, clht_snapshot_all_t snap)
++{
++  clht_snapshot_t s = { .snapshot = snap };
++
++  int i;
++  for (i = 0; i < KEY_BUCKT; i++)
++    {
++      if (vals[i] == 0 && s.map[i] != MAP_INSRT)
++	{
++	  return i;
++	}
++    }
++  return -1;
++}
++
++
++static inline uint64_t
++snap_set_map(uint64_t s, int index, int val)
++{
++  clht_snapshot_t s1 = { .snapshot = s };
++  s1.map[index] = val;
++  return s1.snapshot;
++}
++
++static inline uint64_t
++snap_set_map_and_inc_version(uint64_t s, int index, int val)
++{
++  clht_snapshot_t s1 = { .snapshot =  s};
++  s1.map[index] = val;
++  s1.version++;
++  return s1.snapshot;
++}
++
++static inline void
++_mm_pause_rep(uint64_t w)
++{
++  while (w--)
++    {
++      _mm_pause();
++    }
++}
++
++
++
++/* ******************************************************************************** */
++/* inteface */
++/* ******************************************************************************** */
++
++/* Create a new hashtable. */
++clht_t* clht_create(uint64_t num_buckets);
++/* initializes the necessary per-thread structures for the hash table */
++void clht_gc_thread_init(clht_t* hashtable, int id);
++
++
++/* Insert a key-value pair into a hashtable. */
++int clht_put(clht_t* hashtable, clht_addr_t key, clht_val_t val);
++/* Retrieve a key-value pair from a hashtable. */
++clht_val_t clht_get(clht_hashtable_t* hashtable, clht_addr_t key);
++/* Remove a key-value pair from a hashtable. */
++clht_val_t clht_remove(clht_t* hashtable, clht_addr_t key);
++
++/* returns the size of the hash table */
++size_t clht_size(clht_hashtable_t* hashtable);
++
++/* frees the memory used by the hashtable */
++void clht_gc_destroy(clht_t* hashtable);
++
++/* prints the contents of the hash table */
++void clht_print(clht_hashtable_t* hashtable);
++
++/* string description of the type of the hash table
++ For example, CLHT-LB-RESIZE */
++const char* clht_type_desc();
++
++void clht_lock_initialization(clht_t *h);
++
++/* internal */
++extern void clht_gc_thread_version(clht_hashtable_t* h);
++extern void clht_gc_thread_version_max();
++extern int clht_gc_get_id();
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* _CLHT_H_ */
++
+diff --git a/P-CLHT/include/clht_lb_res.h b/P-CLHT/include/clht_lb_res.h
+index 13df699..18bbf4c 100644
+--- a/P-CLHT/include/clht_lb_res.h
++++ b/P-CLHT/include/clht_lb_res.h
+@@ -31,6 +31,8 @@
+ #ifndef _CLHT_RES_RES_H_
+ #define _CLHT_RES_RES_H_
+ 
++#define pm_sync_var_hint(size, init_val) __attribute__((__annotate__("sync-" #size "-" #init_val)))
++
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <inttypes.h>
+@@ -159,7 +161,7 @@ typedef volatile uint8_t clht_lock_t;
+ 
+ typedef struct ALIGNED(CACHE_LINE_SIZE) bucket_s
+ {
+-  clht_lock_t lock;
++  clht_lock_t lock pm_sync_var_hint(1, 0);
+   volatile uint32_t hops;
+   clht_addr_t key[ENTRIES_PER_BUCKET];
+   clht_val_t val[ENTRIES_PER_BUCKET];
+@@ -181,9 +183,9 @@ typedef struct ALIGNED(CACHE_LINE_SIZE) clht
+       struct clht_hashtable_s* ht_oldest;
+       struct ht_ts* version_list;
+       size_t version_min;
+-      volatile clht_lock_t resize_lock;
+-      volatile clht_lock_t gc_lock;
+-      volatile clht_lock_t status_lock;
++      volatile clht_lock_t resize_lock pm_sync_var_hint(1, 0);
++      volatile clht_lock_t gc_lock pm_sync_var_hint(1, 0);
++      volatile clht_lock_t status_lock pm_sync_var_hint(1, 0);
+     };
+     uint8_t padding[2 * CACHE_LINE_SIZE];
+   };
+@@ -458,10 +460,10 @@ POBJ_LAYOUT_TOID(clht, bucket_t);
+ POBJ_LAYOUT_END(clht);
+ 
+ // Global pool uuid
+-uint64_t pool_uuid;
++extern uint64_t pool_uuid;
+ 
+ // Global pool pointer
+-PMEMobjpool *pop;
++extern PMEMobjpool *pop;
+ 
+ // pmemobj header size (presume using default compact header)
+ #define POBJ_HEADER_SIZE        16
+diff --git a/P-CLHT/include/pmfuzz.h b/P-CLHT/include/pmfuzz.h
+new file mode 100644
+index 0000000..39b4fcc
+--- /dev/null
++++ b/P-CLHT/include/pmfuzz.h
+@@ -0,0 +1,49 @@
++#ifndef INCLUDE_PMFUZZ_INSTRUMENTATION_H__
++#define INCLUDE_PMFUZZ_INSTRUMENTATION_H__
++
++#include <stdint.h>
++#include <stdio.h>
++#include "shiftregarr.h"
++
++void pmfuzz_ro(uint32_t rand);
++void pmfuzz_wo(uint32_t rand);
++void pmfuzz_rw(uint32_t rand);
++void pmfuzz_inject_failure(char* file, int line);
++void pmfuzz_set_addr_env(void* addr, unsigned long size);
++void pmfuzz_set_path_env(char* path);
++
++void pmfuzz_init(void* addr, unsigned long size, char* path);
++void pmfuzz_term(void);
++
++#define PMFUZZ_RND(range) \
++    (((uint32_t)((15485867*__LINE__*__LINE__*(__COUNTER__+9))%4392203))%(range))
++
++#define PMFUZZ_RND_LN(line, range) \
++    (((uint32_t)((15485867*line*line*(__COUNTER__+9))%4392203))%(range))
++
++#ifdef PMFUZZ
++
++/* AFL variables */
++extern uint8_t      *__pmfuzz_area_ptr;
++extern uint32_t     __pmfuzz_map_size;
++extern uint32_t     __pmfuzz_prev_loc;
++
++#define PMFUZZ_MARK_RO __attribute__((annotate("pmfuzz_pm_read_func")))
++#define PMFUZZ_MARK_WO __attribute__((annotate("pmfuzz_pm_write_func")))
++#define PMFUZZ_MARK_RW __attribute__((annotate("pmfuzz_pm_read_write_func")))
++#define NO_INLINE      __attribute__((noinline))
++
++#define PMFUZZ_FAILURE_HINT pmfuzz_inject_failure(__FILE__, __LINE__);
++
++#else
++
++#define PMFUZZ_MARK_RO
++#define PMFUZZ_MARK_WO
++#define PMFUZZ_MARK_RW
++#define NO_INLINE
++
++#define PMFUZZ_FAILURE_HINT
++
++#endif // PMFUZZ
++
++#endif // INCLUDE_PMFUZZ_INSTRUMENTATION_H__
+diff --git a/P-CLHT/include/shiftregarr.h b/P-CLHT/include/shiftregarr.h
+new file mode 100644
+index 0000000..ba04fc8
+--- /dev/null
++++ b/P-CLHT/include/shiftregarr.h
+@@ -0,0 +1,81 @@
++/**
++ *  @file        shiftregarr.h
++ *  @details     todo
++ *  @author      author
++ *  @copyright   License text
++ */
++
++#pragma once
++
++#include <assert.h>
++#include <limits.h>		/* for CHAR_BIT */
++#include <stdint.h>
++#include <stdlib.h>
++#include <stdio.h>
++
++#define SRA_SET   0
++#define SRA_UNSET 255
++
++#define BITMASK(b) (1 << ((b) % CHAR_BIT))
++#define BITSLOT(b) ((b) / CHAR_BIT)
++#define BITSET(a, b) ((a)[BITSLOT(b)] |= BITMASK(b))
++#define BITCLEAR(a, b) ((a)[BITSLOT(b)] &= ~BITMASK(b))
++#define BITTEST(a, b) ((a)[BITSLOT(b)] & BITMASK(b))
++#define BITNSLOTS(nb) ((nb + CHAR_BIT - 1) / CHAR_BIT)
++
++#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
++#define BYTE_TO_BINARY(byte)  \
++  (byte & 0x80 ? '1' : '0'), \
++  (byte & 0x40 ? '1' : '0'), \
++  (byte & 0x20 ? '1' : '0'), \
++  (byte & 0x10 ? '1' : '0'), \
++  (byte & 0x08 ? '1' : '0'), \
++  (byte & 0x04 ? '1' : '0'), \
++  (byte & 0x02 ? '1' : '0'), \
++  (byte & 0x01 ? '1' : '0') 
++
++/**
++ * @brief Pushes back either 1 or 0 to the end of the shift register 
++ * @param mem Pointer to the shift reg array
++ * @param size Size of the shift reg array in bytes
++ * @param elem_sz Size of each element in bytes (used for indexing the array)
++ * @param loc Index of the shift reg in the array
++ * @param basebit Value of unset bit in the map
++ * @return void
++ * 
++ * **NOTE**: elem_sz cannot be larger than INT_32_MAX
++*/
++static inline void 
++sra_push_back(uint8_t *mem, size_t size, size_t elem_sz, size_t loc, uint8_t basebit) {
++    size_t elem_cnt = size/elem_sz;
++    assert(loc < elem_cnt);
++
++    uint8_t *arr = mem+(loc*elem_sz);
++    size_t elem_sz_bits = elem_sz*8;
++
++    int32_t it = elem_sz_bits;
++    while (it--) {
++        if (basebit && !BITTEST(arr, it)) {
++            break;
++        } else if (!basebit && BITTEST(arr, it)) {
++            break;
++        }
++    }
++
++    if (it != (int32_t)elem_sz_bits-1) {
++        it++;
++        if (basebit) {
++            BITCLEAR(arr, it);
++        } else {
++            BITSET(arr, it);
++        }
++        if (it != 0) {
++            it--;
++            if (basebit) {
++                BITSET(arr, it);
++            } else{
++                BITCLEAR(arr, it);
++            }
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/P-CLHT/src/clht_lb_res.c b/P-CLHT/src/clht_lb_res.c
+index 7411f12..5fccf7b 100644
+--- a/P-CLHT/src/clht_lb_res.c
++++ b/P-CLHT/src/clht_lb_res.c
+@@ -1,4 +1,4 @@
+-/*   
++/*
+  *   File: clht_lb_res.c
+  *   Author: Vasileios Trigonakis <vasileios.trigonakis@epfl.ch>
+  *   Description: lock-based cache-line hash table with resizing.
+@@ -35,6 +35,8 @@
+ #include <sys/types.h>
+ #include <sys/wait.h>
+ #include <emmintrin.h>
++#include <x86intrin.h>  // clwb
++#include <xmmintrin.h>  // sfence
+ 
+ #include "clht_lb_res.h"
+ 
+@@ -50,6 +52,13 @@ __thread uint32_t put_num_failed_on_new = 0;
+ 
+ __thread size_t check_ht_status_steps = CLHT_STATUS_INVOK_IN;
+ 
++// Global pool uuid
++uint64_t pool_uuid;
++
++// Global pool pointer
++PMEMobjpool *pop;
++
++
+ #include "stdlib.h"
+ #include "assert.h"
+ 
+@@ -67,7 +76,7 @@ clht_type_desc()
+ }
+ 
+     inline int
+-is_power_of_two (unsigned int x) 
++is_power_of_two (unsigned int x)
+ {
+     return ((x != 0) && !(x & (x - 1)));
+ }
+@@ -108,7 +117,8 @@ inline void *clht_ptr_from_off(uint64_t offset, bool alignment)
+ }
+ 
+ static inline void mfence() {
+-    asm volatile("sfence":::"memory");
++    // asm volatile("sfence":::"memory");
++    _mm_sfence();
+ }
+ 
+ static inline void clflush(char *data, int len, bool front, bool back)
+@@ -118,11 +128,14 @@ static inline void clflush(char *data, int len, bool front, bool back)
+         mfence();
+     for(; ptr<data+len; ptr+=CACHE_LINE_SIZE){
+ #ifdef CLFLUSH
+-        asm volatile("clflush %0" : "+m" (*(volatile char *)ptr));
++        // asm volatile("clflush %0" : "+m" (*(volatile char *)ptr));
++        _mm_clflush((volatile char *)ptr);
+ #elif CLFLUSH_OPT
+-        asm volatile(".byte 0x66; clflush %0" : "+m" (*(volatile char *)(ptr)));
++        // asm volatile(".byte 0x66; clflush %0" : "+m" (*(volatile char *)(ptr)));
++        _mm_clflushopt((volatile char *)ptr);
+ #elif CLWB
+-        asm volatile(".byte 0x66; xsaveopt %0" : "+m" (*(volatile char *)(ptr)));
++        // asm volatile(".byte 0x66; xsaveopt %0" : "+m" (*(volatile char *)(ptr)));
++        _mm_clwb((volatile char *)ptr);
+ #endif
+     }
+     if (back)
+@@ -185,7 +198,7 @@ static int bucket_init(PMEMobjpool *pop_arg, void *ptr, void *arg)
+ 
+ /* Create a new bucket. */
+     bucket_t*
+-clht_bucket_create() 
++clht_bucket_create()
+ {
+     bucket_t* bucket = NULL;
+     PMEMoid bucket_oid;
+@@ -207,6 +220,7 @@ clht_bucket_create_stats(clht_hashtable_t* h, int* resize)
+     if (((uint64_t)b & (CACHE_LINE_SIZE - 1)) != 0)
+         fprintf(stderr, "cacheline-unaligned bucket allocation\n");
+ 
++    printf("clht_bucket_create_stats (%u ~ %u)\n", h->num_expands, h->num_expands_threshold);
+     //if (IAF_U32(&h->num_expands) == h->num_expands_threshold)
+     if (IAF_U32(&h->num_expands) >= h->num_expands_threshold)
+     {
+@@ -218,7 +232,7 @@ clht_bucket_create_stats(clht_hashtable_t* h, int* resize)
+ 
+ clht_hashtable_t* clht_hashtable_create(uint64_t num_buckets);
+ 
+-    clht_t* 
++    clht_t*
+ clht_create(uint64_t num_buckets)
+ {
+     // Enable prefault
+@@ -229,11 +243,11 @@ clht_create(uint64_t num_buckets)
+         perror("failed to configure prefaults at create\n");
+ 
+     // Open the PMEMpool if it exists, otherwise create it
+-    size_t pool_size = 32*1024*1024*1024UL;
+-    if (access("/dev/shm/pool", F_OK) != -1)
+-        pop = pmemobj_open("/dev/shm/pool", POBJ_LAYOUT_NAME(clht));
++    size_t pool_size = 32*1024*1024UL;
++    if (access(getenv("PMEM_POOL"), F_OK) != -1)
++        pop = pmemobj_open(getenv("PMEM_POOL"), POBJ_LAYOUT_NAME(clht));
+     else
+-        pop = pmemobj_create("/dev/shm/pool", POBJ_LAYOUT_NAME(clht), pool_size, 0666);
++        pop = pmemobj_create(getenv("PMEM_POOL"), POBJ_LAYOUT_NAME(clht), pool_size, 0666);
+ 
+     if (pop == NULL)
+         perror("failed to open the pool\n");
+@@ -342,7 +356,7 @@ clht_hashtable_create(uint64_t num_buckets)
+ 
+ /* Hash a key for a particular hash table. */
+     uint64_t
+-clht_hash(clht_hashtable_t* hashtable, clht_addr_t key) 
++clht_hash(clht_hashtable_t* hashtable, clht_addr_t key)
+ {
+     /* uint64_t hashval; */
+     /* return __ac_Jenkins_hash_64(key) & (hashtable->hash); */
+@@ -395,7 +409,7 @@ retry:
+ bucket_exists(volatile bucket_t* bucket, clht_addr_t key)
+ {
+     uint32_t j;
+-    do 
++    do
+     {
+         for (j = 0; j < ENTRIES_PER_BUCKET; j++)
+         {
+@@ -405,7 +419,7 @@ bucket_exists(volatile bucket_t* bucket, clht_addr_t key)
+             }
+         }
+         bucket = (bucket_t *)clht_ptr_from_off(bucket->next_off, true);
+-    } 
++    }
+     while (unlikely(bucket != NULL));
+     return false;
+ }
+@@ -441,11 +455,11 @@ clht_put(clht_t* h, clht_addr_t key, clht_val_t val)
+     clht_val_t* empty_v = NULL;
+ 
+     uint32_t j;
+-    do 
++    do
+     {
+         for (j = 0; j < ENTRIES_PER_BUCKET; j++)
+         {
+-            if (bucket->key[j] == key) 
++            if (bucket->key[j] == key)
+             {
+                 LOCK_RLS(lock);
+                 return false;
+@@ -495,7 +509,7 @@ clht_put(clht_t* h, clht_addr_t key, clht_val_t val)
+                 /* ht_resize_pes(h, 1); */
+ 				DEBUG_PRINT("Calling ht_status for key %ld\n", (long)key);
+                 int ret = ht_status(h, 1, 0);
+-				
++
+ 				// if crash, return true, because the insert anyway succeeded
+ 				if (ret == 0)
+ 					return true;
+@@ -536,7 +550,7 @@ clht_update(clht_t* h, clht_addr_t key, clht_val_t val)
+     CLHT_CHECK_STATUS(h);
+ 
+     uint32_t j;
+-    do 
++    do
+     {
+         for (j = 0; j < ENTRIES_PER_BUCKET; j++)
+         {
+@@ -548,9 +562,12 @@ clht_update(clht_t* h, clht_addr_t key, clht_val_t val)
+             }
+         }
+         bucket = (bucket_t *)clht_ptr_from_off(bucket->next_off, true);
+-    } 
++    }
+     while (unlikely(bucket != NULL));
+ 
++    // Bugfix: Releasing the lock is required.
++    LOCK_RLS(lock);
++
+     return false;
+ }
+ 
+@@ -780,12 +797,14 @@ ht_resize_pes(clht_t* h, int is_increase, int by)
+     clflush_new_hashtable((bucket_t *)clht_ptr_from_off(ht_new->table_off, true), num_buckets_new);
+     mfence();
+ 
++    printf("resize to %lu buckets from %lu\n", num_buckets_new, ht_old->num_buckets);
++
+ 	// atomically swap the root pointer
+     // Presume the head of "h" contains the pointer (offset) to the hash table
+     SWAP_U64((uint64_t*) h, (uint64_t) pmemobj_oid(ht_new).off);
+     clflush((char *)h, sizeof(uint64_t), false, true);
+ 
+-	DEBUG_PRINT("Parent reached correctly\n"); 
++	DEBUG_PRINT("Parent reached correctly\n");
+     ht_old->table_new = ht_new;
+     TRYLOCK_RLS(h->resize_lock);
+ 
+@@ -1019,7 +1038,7 @@ void clht_lock_initialization(clht_t *h)
+     bucket_t *buckets = (bucket_t *)clht_ptr_from_off(ht->table_off, true);
+     for (i = 0; i < ht->num_buckets; i++) {
+         buckets[i].lock = LOCK_FREE;
+-        for (next = clht_ptr_from_off(buckets[i].next_off, true); 
++        for (next = clht_ptr_from_off(buckets[i].next_off, true);
+                 next != NULL; next = clht_ptr_from_off(next->next_off, true)) {
+             next->lock = LOCK_FREE;
+         }
+diff --git a/ycsb.cpp b/ycsb.cpp
+index 179de6d..fbf2218 100644
+--- a/ycsb.cpp
++++ b/ycsb.cpp
+@@ -4,30 +4,51 @@
+ #include <cstring>
+ #include <vector>
+ #include <fstream>
+-#include <iostream>
++#include <stdio.h>
++#include <sstream>
+ #include <stdlib.h>
+ #include "tbb/tbb.h"
+ 
++#include <algorithm>
++#include <array>
++#include <atomic>
++#include <cassert>
++#include <chrono>
++#include <thread>
++#include <unordered_set>
++#include <cstddef>
++#include <vector>
++#include <mutex>
++#include <sys/types.h>
++#include <sys/wait.h>
++
+ using namespace std;
+ 
+ #include "P-ART/Tree.h"
+-#include "third-party/FAST_FAIR/btree.h"
+ #include "third-party/CCEH/src/Level_hashing.h"
+ #include "third-party/CCEH/src/CCEH.h"
+ #include "third-party/WOART/woart.h"
+ #include "masstree.h"
+-#include "P-BwTree/src/bwtree.h"
+-#include "clht.h"
++#include "clht_lb_res.h"
+ #include "ssmem.h"
+ 
++#ifndef __AFL_FUZZ_TESTCASE_LEN
++  ssize_t fuzz_len;
++  #define __AFL_FUZZ_TESTCASE_LEN fuzz_len
++  unsigned char fuzz_buf[1024000];
++  #define __AFL_FUZZ_TESTCASE_BUF fuzz_buf
++  #define __AFL_FUZZ_INIT() void sync()
++  #define __AFL_INIT() ((fuzz_len = read(0, fuzz_buf, sizeof(fuzz_buf))) > 0 ? 1 : 0)
++#endif
++
++__AFL_FUZZ_INIT();
++
+ #ifdef HOT
+ #include <hot/rowex/HOTRowex.hpp>
+ #include <idx/contenthelpers/IdentityKeyExtractor.hpp>
+ #include <idx/contenthelpers/OptionalValue.hpp>
+ #endif
+ 
+-using namespace wangziqi2013::bwtree;
+-
+ // index types
+ enum {
+     TYPE_ART,
+@@ -224,800 +245,23 @@ void barrier_cross(barrier_t *b) {
+ barrier_t barrier;
+ /////////////////////////////////////////////////////////////////////////////////
+ 
+-static uint64_t LOAD_SIZE = 64000000;
+-static uint64_t RUN_SIZE = 64000000;
+-
+ void loadKey(TID tid, Key &key) {
+     return ;
+ }
+ 
+-void ycsb_load_run_string(int index_type, int wl, int kt, int ap, int num_thread,
+-        std::vector<Key *> &init_keys,
+-        std::vector<Key *> &keys,
+-        std::vector<int> &ranges,
+-        std::vector<int> &ops)
+-{
+-    std::string init_file;
+-    std::string txn_file;
+-
+-    if (ap == UNIFORM) {
+-        if (kt == STRING_KEY && wl == WORKLOAD_A) {
+-            init_file = "./index-microbench/workloads/ycsbkey_load_workloada";
+-            txn_file = "./index-microbench/workloads/ycsbkey_run_workloada";
+-        } else if (kt == STRING_KEY && wl == WORKLOAD_B) {
+-            init_file = "./index-microbench/workloads/ycsbkey_load_workloadb";
+-            txn_file = "./index-microbench/workloads/ycsbkey_run_workloadb";
+-        } else if (kt == STRING_KEY && wl == WORKLOAD_C) {
+-            init_file = "./index-microbench/workloads/ycsbkey_load_workloadc";
+-            txn_file = "./index-microbench/workloads/ycsbkey_run_workloadc";
+-        } else if (kt == STRING_KEY && wl == WORKLOAD_D) {
+-            init_file = "./index-microbench/workloads/ycsbkey_load_workloadd";
+-            txn_file = "./index-microbench/workloads/ycsbkey_run_workloadd";
+-        } else if (kt == STRING_KEY && wl == WORKLOAD_E) {
+-            init_file = "./index-microbench/workloads/ycsbkey_load_workloade";
+-            txn_file = "./index-microbench/workloads/ycsbkey_run_workloade";
+-        }
+-    } else {
+-        if (kt == STRING_KEY && wl == WORKLOAD_A) {
+-            init_file = "./index-microbench/workloads/ycsbkey_load_workloada";
+-            txn_file = "./index-microbench/workloads/ycsbkey_run_workloada";
+-        } else if (kt == STRING_KEY && wl == WORKLOAD_B) {
+-            init_file = "./index-microbench/workloads/ycsbkey_load_workloadb";
+-            txn_file = "./index-microbench/workloads/ycsbkey_run_workloadb";
+-        } else if (kt == STRING_KEY && wl == WORKLOAD_C) {
+-            init_file = "./index-microbench/workloads/ycsbkey_load_workloadc";
+-            txn_file = "./index-microbench/workloads/ycsbkey_run_workloadc";
+-        } else if (kt == STRING_KEY && wl == WORKLOAD_D) {
+-            init_file = "./index-microbench/workloads/ycsbkey_load_workloadd";
+-            txn_file = "./index-microbench/workloads/ycsbkey_run_workloadd";
+-        } else if (kt == STRING_KEY && wl == WORKLOAD_E) {
+-            init_file = "./index-microbench/workloads/ycsbkey_load_workloade";
+-            txn_file = "./index-microbench/workloads/ycsbkey_run_workloade";
+-        }
+-    }
+-
+-    std::ifstream infile_load(init_file);
+-
+-    std::string op;
+-    std::string key;
+-    int range;
+-
+-    std::string insert("INSERT");
+-    std::string update("UPDATE");
+-    std::string read("READ");
+-    std::string scan("SCAN");
+-    std::string maxKey("z");
+-
+-    int count = 0;
+-    uint64_t val;
+-    while ((count < LOAD_SIZE) && infile_load.good()) {
+-        infile_load >> op >> key;
+-        if (op.compare(insert) != 0) {
+-            std::cout << "READING LOAD FILE FAIL!\n";
+-            return ;
+-        }
+-        val = std::stoul(key.substr(4, key.size()));
+-        init_keys.push_back(init_keys[count]->make_leaf((char *)key.c_str(), key.size()+1, val));
+-        count++;
+-    }
+-
+-    fprintf(stderr, "Loaded %d keys\n", count);
+-
+-    std::ifstream infile_txn(txn_file);
+-
+-    count = 0;
+-    while ((count < RUN_SIZE) && infile_txn.good()) {
+-        infile_txn >> op >> key;
+-        if (op.compare(insert) == 0) {
+-            ops.push_back(OP_INSERT);
+-            val = std::stoul(key.substr(4, key.size()));
+-            keys.push_back(keys[count]->make_leaf((char *)key.c_str(), key.size()+1, val));
+-            ranges.push_back(1);
+-        } else if (op.compare(update) == 0) {
+-            ops.push_back(OP_UPDATE);
+-            val = std::stoul(key.substr(4, key.size()));
+-            keys.push_back(keys[count]->make_leaf((char *)key.c_str(), key.size()+1, val));
+-            ranges.push_back(1);
+-        } else if (op.compare(read) == 0) {
+-            ops.push_back(OP_READ);
+-            val = std::stoul(key.substr(4, key.size()));
+-            keys.push_back(keys[count]->make_leaf((char *)key.c_str(), key.size()+1, val));
+-            ranges.push_back(1);
+-        } else if (op.compare(scan) == 0) {
+-            infile_txn >> range;
+-            ops.push_back(OP_SCAN);
+-            keys.push_back(keys[count]->make_leaf((char *)key.c_str(), key.size()+1, 0));
+-            ranges.push_back(range);
+-        } else {
+-            std::cout << "UNRECOGNIZED CMD!\n";
+-            return;
+-        }
+-        count++;
+-    }
++void ycsb_load_run_randint(int index_type, int num_thread) {
++    unsigned char *afl_testcase_buf;
++    int afl_testcase_len;
++    std::vector<std::istringstream> cmd_streams;
++    char *tok = NULL;
++    int i;
+ 
+     if (index_type == TYPE_ART) {
+-        ART_ROWEX::Tree tree(loadKey);
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, LOAD_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                auto t = tree.getThreadInfo();
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    Key *key = key->make_leaf((char *)init_keys[i]->fkey, init_keys[i]->key_len, init_keys[i]->value);
+-                    tree.insert(key, t);
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            Key *end = end->make_leaf((char *)maxKey.c_str(), maxKey.size()+1, 0);
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, RUN_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                auto t = tree.getThreadInfo();
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    Key *key;
+-                    if (ops[i] == OP_INSERT) {
+-                        key = key->make_leaf((char *)keys[i]->fkey, keys[i]->key_len, keys[i]->value);
+-                        tree.insert(key, t);
+-                    } else if (ops[i] == OP_READ) {
+-                        key = key->make_leaf((char *)keys[i]->fkey, keys[i]->key_len, keys[i]->value);
+-                        Key *val = reinterpret_cast<Key *>(tree.lookup(key, t));
+-                        if (val->value != keys[i]->value) {
+-                            std::cout << "[ART] wrong key read: " << val->value << " expected:" << keys[i]->value << std::endl;
+-                            throw;
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        Key *results[200];
+-                        Key *continueKey = NULL;
+-                        size_t resultsFound = 0;
+-                        size_t resultsSize = ranges[i];
+-                        Key *start = start->make_leaf((char *)keys[i]->fkey, keys[i]->key_len, keys[i]->value);
+-                        tree.lookupRange(start, end, continueKey, results, resultsSize, resultsFound, t);
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+-#ifdef HOT
+-    } else if (index_type == TYPE_HOT) {
+-        hot::rowex::HOTRowex<Key *, KeyExtractor> mTrie;
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, LOAD_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    Key *key = key->make_leaf((char *)init_keys[i]->fkey, init_keys[i]->key_len, init_keys[i]->value);
+-                    Dummy::clflush((char *)key, sizeof(Key) + key->key_len, true, true);
+-                    if (!(mTrie.insert(key))) {
+-                        fprintf(stderr, "[HOT] load insert fail\n");
+-                        exit(1);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, RUN_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        Key *key = key->make_leaf((char *)keys[i]->fkey, keys[i]->key_len, keys[i]->value);
+-                        Dummy::clflush((char *)key, sizeof(Key) + key->key_len, true, true);
+-                        if (!(mTrie.insert(key))) {
+-                            fprintf(stderr, "[HOT] run insert fail\n");
+-                            exit(1);
+-                        }
+-                    } else if (ops[i] == OP_READ) {
+-                        idx::contenthelpers::OptionalValue<Key *> result = mTrie.lookup((char const *)keys[i]->fkey);
+-                        if (!result.mIsValid || result.mValue->value != keys[i]->value) {
+-                            printf("mIsValid = %d\n", result.mIsValid);
+-                            printf("Return value = %lu, Correct value = %lu\n", result.mValue->value, keys[i]->value);
+-                            exit(1);
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        idx::contenthelpers::OptionalValue<Key *> result = mTrie.scan((char const *)keys[i]->fkey, ranges[i]);
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+-#endif
+-    } else if (index_type == TYPE_BWTREE) {
+-        auto t = new BwTree<char *, uint64_t, KeyComparator, KeyEqualityChecker>{true, KeyComparator{1}, KeyEqualityChecker{1}};
+-        t->UpdateThreadLocal(1);
+-        t->AssignGCID(0);
+-        std::atomic<int> next_thread_id;
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            next_thread_id.store(0);
+-            t->UpdateThreadLocal(num_thread);
+-            auto func = [&]() {
+-                int thread_id = next_thread_id.fetch_add(1);
+-                uint64_t start_key = LOAD_SIZE / num_thread * (uint64_t)thread_id;
+-                uint64_t end_key = start_key + LOAD_SIZE / num_thread;
+-
+-                t->AssignGCID(thread_id);
+-                for (uint64_t i = start_key; i < end_key; i++) {
+-                    Dummy::clflush((char *)init_keys[i]->fkey, init_keys[i]->key_len, true, true);
+-                    t->Insert((char *)init_keys[i]->fkey, init_keys[i]->value);
+-                }
+-                t->UnregisterThread(thread_id);
+-            };
+-
+-            std::vector<std::thread> thread_group;
+-
+-            for (int i = 0; i < num_thread; i++)
+-                thread_group.push_back(std::thread{func});
+-
+-            for (int i = 0; i < num_thread; i++)
+-                thread_group[i].join();
+-            t->UpdateThreadLocal(1);
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            auto starttime = std::chrono::system_clock::now();
+-            next_thread_id.store(0);
+-            t->UpdateThreadLocal(num_thread);
+-            auto func = [&]() {
+-                std::vector<uint64_t> v{};
+-                v.reserve(1);
+-                int thread_id = next_thread_id.fetch_add(1);
+-                uint64_t start_key = RUN_SIZE / num_thread * (uint64_t)thread_id;
+-                uint64_t end_key = start_key + RUN_SIZE / num_thread;
+-
+-                t->AssignGCID(thread_id);
+-                for (uint64_t i = start_key; i < end_key; i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        Dummy::clflush((char *)keys[i]->fkey, keys[i]->key_len, true, true);
+-                        t->Insert((char *)keys[i]->fkey, keys[i]->value);
+-                    } else if (ops[i] == OP_READ) {
+-                        v.clear();
+-                        t->GetValue((char *)keys[i]->fkey, v);
+-                        if (v[0] != keys[i]->value) {
+-                            std::cout << "[BWTREE] wrong key read: " << v[0] << " expected:" << keys[i]->value << std::endl;
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        uint64_t buf[200];
+-                        auto it = t->Begin((char *)keys[i]->fkey);
+-
+-                        int resultsFound = 0;
+-                        while (it.IsEnd() != true && resultsFound != ranges[i]) {
+-                            buf[resultsFound] = it->second;
+-                            resultsFound++;
+-                            it++;
+-                        }
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    }
+-                }
+-                t->UnregisterThread(thread_id);
+-            };
+-
+-            std::vector<std::thread> thread_group;
+-
+-            for (int i = 0; i < num_thread; i++)
+-                thread_group.push_back(std::thread{func});
+-
+-            for (int i = 0; i < num_thread; i++)
+-                thread_group[i].join();
+-            t->UpdateThreadLocal(1);
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+-    } else if (index_type == TYPE_MASSTREE) {
+-        masstree::masstree *tree = new masstree::masstree();
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, LOAD_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                auto t = tree->getThreadInfo();
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    tree->put((char *)init_keys[i]->fkey, init_keys[i]->value, t);
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, RUN_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                auto t = tree->getThreadInfo();
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        tree->put((char *)keys[i]->fkey, keys[i]->value, t);
+-                    } else if (ops[i] == OP_READ) {
+-                        uint64_t *ret = reinterpret_cast<uint64_t *> (tree->get((char *)keys[i]->fkey, t));
+-                        if (ap == UNIFORM && (uint64_t) ret != keys[i]->value) {
+-                            printf("[MASS] search key = %lu, search value = %lu\n", keys[i]->value, ret);
+-                            exit(1);
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        int resultsFound;
+-                        uint64_t results[200];
+-                        resultsFound = tree->scan((char *)keys[i]->fkey, ranges[i], results, t);
+-                    } else if (ops[i] == OP_DELETE) {
+-                        tree->del((char *)keys[i]->fkey, t);
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        tree->put((char *)keys[i]->fkey, keys[i]->value, t);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+-    } else if (index_type == TYPE_FASTFAIR) {
+-        fastfair::btree *bt = new fastfair::btree();
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, LOAD_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    bt->btree_insert((char *)init_keys[i]->fkey, (char *) &init_keys[i]->value);
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, RUN_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        bt->btree_insert((char *)keys[i]->fkey, (char *) &keys[i]->value);
+-                    } else if (ops[i] == OP_READ) {
+-                        uint64_t *ret = reinterpret_cast<uint64_t *> (bt->btree_search((char *)keys[i]->fkey));
+-                        if (ret == NULL) {
+-                            //printf("Return value is NULL\n");
+-                        }else if (*ret != keys[i]->value) {
+-                            //printf("[FASTFAIR] wrong value was returned: originally expected %lu\n", keys[i]->value);
+-                            //exit(1);
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        uint64_t buf[200];
+-                        int resultsFound = 0;
+-                        bt->btree_search_range ((char *)keys[i]->fkey, (char *)maxKey.c_str(), buf, ranges[i], resultsFound);
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+-    } else if (index_type == TYPE_WOART) {
+-#ifdef STRING_TYPE
+-        woart_tree *t = (woart_tree *)malloc(sizeof(woart_tree));
+-        woart_tree_init(t);
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, LOAD_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    woart_insert(t, init_keys[i]->fkey, init_keys[i]->key_len, &init_keys[i]->value);
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, RUN_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        woart_insert(t, keys[i]->fkey, keys[i]->key_len, &keys[i]->value);
+-                    } else if (ops[i] == OP_READ) {
+-                        uint64_t *ret = reinterpret_cast<uint64_t *> (woart_search(t, keys[i]->fkey, keys[i]->key_len));
+-                        if (*ret != keys[i]->value) {
+-                            printf("[WOART] search key = %lu, search value = %lu\n", keys[i]->value, *ret);
+-                            exit(1);
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        unsigned long buf[200];
+-                        woart_scan(t, keys[i]->fkey, keys[i]->key_len, ranges[i], buf);
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+-#endif
+-    }
+-}
+-
+-void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_thread,
+-        std::vector<uint64_t> &init_keys,
+-        std::vector<uint64_t> &keys,
+-        std::vector<int> &ranges,
+-        std::vector<int> &ops)
+-{
+-    std::string init_file;
+-    std::string txn_file;
+-
+-    if (ap == UNIFORM) {
+-        if (kt == RANDINT_KEY && wl == WORKLOAD_A) {
+-            init_file = "./index-microbench/workloads/loada_unif_int.dat";
+-            txn_file = "./index-microbench/workloads/txnsa_unif_int.dat";
+-        } else if (kt == RANDINT_KEY && wl == WORKLOAD_B) {
+-            init_file = "./index-microbench/workloads/loadb_unif_int.dat";
+-            txn_file = "./index-microbench/workloads/txnsb_unif_int.dat";
+-        } else if (kt == RANDINT_KEY && wl == WORKLOAD_C) {
+-            init_file = "./index-microbench/workloads/loadc_unif_int.dat";
+-            txn_file = "./index-microbench/workloads/txnsc_unif_int.dat";
+-        } else if (kt == RANDINT_KEY && wl == WORKLOAD_D) {
+-            init_file = "./index-microbench/workloads/loadd_unif_int.dat";
+-            txn_file = "./index-microbench/workloads/txnsd_unif_int.dat";
+-        } else if (kt == RANDINT_KEY && wl == WORKLOAD_E) {
+-            init_file = "./index-microbench/workloads/loade_unif_int.dat";
+-            txn_file = "./index-microbench/workloads/txnse_unif_int.dat";
+-        }
+-    } else {
+-        if (kt == RANDINT_KEY && wl == WORKLOAD_A) {
+-            init_file = "./index-microbench/workloads/loada_unif_int.dat";
+-            txn_file = "./index-microbench/workloads/txnsa_unif_int.dat";
+-        } else if (kt == RANDINT_KEY && wl == WORKLOAD_B) {
+-            init_file = "./index-microbench/workloads/loadb_unif_int.dat";
+-            txn_file = "./index-microbench/workloads/txnsb_unif_int.dat";
+-        } else if (kt == RANDINT_KEY && wl == WORKLOAD_C) {
+-            init_file = "./index-microbench/workloads/loadc_unif_int.dat";
+-            txn_file = "./index-microbench/workloads/txnsc_unif_int.dat";
+-        } else if (kt == RANDINT_KEY && wl == WORKLOAD_D) {
+-            init_file = "./index-microbench/workloads/loadd_unif_int.dat";
+-            txn_file = "./index-microbench/workloads/txnsd_unif_int.dat";
+-        } else if (kt == RANDINT_KEY && wl == WORKLOAD_E) {
+-            init_file = "./index-microbench/workloads/loade_unif_int.dat";
+-            txn_file = "./index-microbench/workloads/txnse_unif_int.dat";
+-        }
+-    }
+-
+-    std::ifstream infile_load(init_file);
+-
+-    std::string op;
+-    uint64_t key;
+-    int range;
+-
+-    std::string insert("INSERT");
+-    std::string update("UPDATE");
+-    std::string read("READ");
+-    std::string scan("SCAN");
+-
+-    int count = 0;
+-    while ((count < LOAD_SIZE) && infile_load.good()) {
+-        infile_load >> op >> key;
+-        if (op.compare(insert) != 0) {
+-            std::cout << "READING LOAD FILE FAIL!\n";
+-            return ;
+-        }
+-        init_keys.push_back(key);
+-        count++;
+-    }
+-
+-    fprintf(stderr, "Loaded %d keys\n", count);
+-
+-    std::ifstream infile_txn(txn_file);
+-
+-    count = 0;
+-    while ((count < RUN_SIZE) && infile_txn.good()) {
+-        infile_txn >> op >> key;
+-        if (op.compare(insert) == 0) {
+-            ops.push_back(OP_INSERT);
+-            keys.push_back(key);
+-            ranges.push_back(1);
+-        } else if (op.compare(update) == 0) {
+-            ops.push_back(OP_UPDATE);
+-            keys.push_back(key);
+-            ranges.push_back(1);
+-        } else if (op.compare(read) == 0) {
+-            ops.push_back(OP_READ);
+-            keys.push_back(key);
+-            ranges.push_back(1);
+-        } else if (op.compare(scan) == 0) {
+-            infile_txn >> range;
+-            ops.push_back(OP_SCAN);
+-            keys.push_back(key);
+-            ranges.push_back(range);
+-        } else {
+-            std::cout << "UNRECOGNIZED CMD!\n";
+-            return;
+-        }
+-        count++;
+-    }
+-
+-    std::atomic<int> range_complete, range_incomplete;
+-    range_complete.store(0);
+-    range_incomplete.store(0);
+-
+-    if (index_type == TYPE_ART) {
+-        ART_ROWEX::Tree tree(loadKey);
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, LOAD_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                auto t = tree.getThreadInfo();
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    Key *key = key->make_leaf(init_keys[i], sizeof(uint64_t), init_keys[i]);
+-                    tree.insert(key, t);
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            Key *end = end->make_leaf(UINT64_MAX, sizeof(uint64_t), 0);
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, RUN_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                auto t = tree.getThreadInfo();
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        Key *key = key->make_leaf(keys[i], sizeof(uint64_t), keys[i]);
+-                        tree.insert(key, t);
+-                    } else if (ops[i] == OP_READ) {
+-                        Key *key = key->make_leaf(keys[i], sizeof(uint64_t), 0);
+-                        uint64_t *val = reinterpret_cast<uint64_t *>(tree.lookup(key, t));
+-                        if (*val != keys[i]) {
+-                            std::cout << "[ART] wrong key read: " << val << " expected:" << keys[i] << std::endl;
+-                            exit(1);
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        Key *results[200];
+-                        Key *continueKey = NULL;
+-                        size_t resultsFound = 0;
+-                        size_t resultsSize = ranges[i];
+-                        Key *start = start->make_leaf(keys[i], sizeof(uint64_t), 0);
+-                        tree.lookupRange(start, end, continueKey, results, resultsSize, resultsFound, t);
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+-#ifdef HOT
+     } else if (index_type == TYPE_HOT) {
+-        hot::rowex::HOTRowex<IntKeyVal *, IntKeyExtractor> mTrie;
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, LOAD_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    IntKeyVal *key;
+-                    posix_memalign((void **)&key, 64, sizeof(IntKeyVal));
+-                    key->key = init_keys[i]; key->value = init_keys[i];
+-                    Dummy::clflush((char *)key, sizeof(IntKeyVal), true, true);
+-                    if (!(mTrie.insert(key))) {
+-                        fprintf(stderr, "[HOT] load insert fail\n");
+-                        exit(1);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, RUN_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        IntKeyVal *key;
+-                        posix_memalign((void **)&key, 64, sizeof(IntKeyVal));
+-                        key->key = keys[i]; key->value = keys[i];
+-                        Dummy::clflush((char *)key, sizeof(IntKeyVal), true, true);
+-                        if (!(mTrie.insert(key))) {
+-                            fprintf(stderr, "[HOT] run insert fail\n");
+-                            exit(1);
+-                        }
+-                    } else if (ops[i] == OP_READ) {
+-                        idx::contenthelpers::OptionalValue<IntKeyVal *> result = mTrie.lookup(keys[i]);
+-                        if (!result.mIsValid || result.mValue->value != keys[i]) {
+-                            printf("mIsValid = %d\n", result.mIsValid);
+-                            printf("Return value = %lu, Correct value = %lu\n", result.mValue->value, keys[i]);
+-                            exit(1);
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        idx::contenthelpers::OptionalValue<IntKeyVal *> result = mTrie.scan(keys[i], ranges[i]);
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+-#endif
+     } else if (index_type == TYPE_BWTREE) {
+-        auto t = new BwTree<uint64_t, uint64_t, KeyComparator, KeyEqualityChecker>{true, KeyComparator{1}, KeyEqualityChecker{1}};
+-        t->UpdateThreadLocal(1);
+-        t->AssignGCID(0);
+-        std::atomic<int> next_thread_id;
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            next_thread_id.store(0);
+-            t->UpdateThreadLocal(num_thread);
+-            auto func = [&]() {
+-                int thread_id = next_thread_id.fetch_add(1);
+-                uint64_t start_key = LOAD_SIZE / num_thread * (uint64_t)thread_id;
+-                uint64_t end_key = start_key + LOAD_SIZE / num_thread;
+-
+-                t->AssignGCID(thread_id);
+-                for (uint64_t i = start_key; i < end_key; i++) {
+-                    t->Insert(init_keys[i], init_keys[i]);
+-                }
+-                t->UnregisterThread(thread_id);
+-            };
+-
+-            std::vector<std::thread> thread_group;
+-
+-            for (int i = 0; i < num_thread; i++)
+-                thread_group.push_back(std::thread{func});
+-
+-            for (int i = 0; i < num_thread; i++)
+-                thread_group[i].join();
+-            t->UpdateThreadLocal(1);
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            auto starttime = std::chrono::system_clock::now();
+-            next_thread_id.store(0);
+-            t->UpdateThreadLocal(num_thread);
+-            auto func = [&]() {
+-                std::vector<uint64_t> v{};
+-                v.reserve(1);
+-                int thread_id = next_thread_id.fetch_add(1);
+-                uint64_t start_key = RUN_SIZE / num_thread * (uint64_t)thread_id;
+-                uint64_t end_key = start_key + RUN_SIZE / num_thread;
+-
+-                t->AssignGCID(thread_id);
+-                for (uint64_t i = start_key; i < end_key; i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        t->Insert(keys[i], keys[i]);
+-                    } else if (ops[i] == OP_READ) {
+-                        v.clear();
+-                        t->GetValue(keys[i], v);
+-                        if (v[0] != keys[i]) {
+-                            std::cout << "[BWTREE] wrong key read: " << v[0] << " expected:" << keys[i] << std::endl;
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        uint64_t buf[200];
+-                        auto it = t->Begin(keys[i]);
+-
+-                        int resultsFound = 0;
+-                        while (it.IsEnd() != true && resultsFound != ranges[i]) {
+-                            buf[resultsFound] = it->second;
+-                            resultsFound++;
+-                            it++;
+-                        }
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    }
+-                }
+-                t->UnregisterThread(thread_id);
+-            };
+-
+-            std::vector<std::thread> thread_group;
+-
+-            for (int i = 0; i < num_thread; i++)
+-                thread_group.push_back(std::thread{func});
+-
+-            for (int i = 0; i < num_thread; i++)
+-                thread_group[i].join();
+-            t->UpdateThreadLocal(1);
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+     } else if (index_type == TYPE_MASSTREE) {
+-        masstree::masstree *tree = new masstree::masstree();
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, LOAD_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                auto t = tree->getThreadInfo();
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    tree->put(init_keys[i], &init_keys[i], t);
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, RUN_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                auto t = tree->getThreadInfo();
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        tree->put(keys[i], &keys[i], t);
+-                    } else if (ops[i] == OP_READ) {
+-                        uint64_t *ret = reinterpret_cast<uint64_t *> (tree->get(keys[i], t));
+-                        if (ap == UNIFORM && *ret != keys[i]) {
+-                            printf("[MASS] search key = %lu, search value = %lu\n", keys[i], *ret);
+-                            exit(1);
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        uint64_t buf[200];
+-                        int ret = tree->scan(keys[i], ranges[i], buf, t);
+-                    } else if (ops[i] == OP_DELETE) {
+-                        tree->del(keys[i], t);
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        tree->put(keys[i], &keys[i], t);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+     } else if (index_type == TYPE_CLHT) {
+-        clht_t *hashtable = clht_create(512);
++        clht_t *hashtable = clht_create(8);
+ 
+         barrier_init(&barrier, num_thread);
+ 
+@@ -1025,70 +269,52 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
+ 
+         std::atomic<int> next_thread_id;
+ 
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            next_thread_id.store(0);
+-            auto func = [&]() {
+-                int thread_id = next_thread_id.fetch_add(1);
+-                tds[thread_id].id = thread_id;
+-                tds[thread_id].ht = hashtable;
+-
+-                uint64_t start_key = LOAD_SIZE / num_thread * (uint64_t)thread_id;
+-                uint64_t end_key = start_key + LOAD_SIZE / num_thread;
++        afl_testcase_buf = __AFL_FUZZ_TESTCASE_BUF;
++        afl_testcase_len = __AFL_FUZZ_TESTCASE_LEN;
+ 
+-                clht_gc_thread_init(tds[thread_id].ht, tds[thread_id].id);
+-                barrier_cross(&barrier);
+-
+-                for (uint64_t i = start_key; i < end_key; i++) {
+-                    clht_put(tds[thread_id].ht, init_keys[i], init_keys[i]);
+-                }
+-            };
+-
+-            std::vector<std::thread> thread_group;
+-
+-            for (int i = 0; i < num_thread; i++)
+-                thread_group.push_back(std::thread{func});
+-
+-            for (int i = 0; i < num_thread; i++)
+-                thread_group[i].join();
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
++        for (i = 0; i < num_thread; ++i) {
++            if (i == 0) {
++                tok = strtok((char *)afl_testcase_buf, "\t");
++            } else {
++                tok = strtok(NULL, "\t");
++            }
++    
++            if (tok == NULL) {
++                cmd_streams.emplace_back(string());
++            } else {
++                cmd_streams.emplace_back(tok);
++            }
+         }
+ 
+-        barrier.crossing = 0;
+-
+         {
+-            // Run
+-            auto starttime = std::chrono::system_clock::now();
+             next_thread_id.store(0);
+             auto func = [&]() {
+                 int thread_id = next_thread_id.fetch_add(1);
++                uint64_t k, v;
++                char op;
++
+                 tds[thread_id].id = thread_id;
+                 tds[thread_id].ht = hashtable;
+ 
+-                uint64_t start_key = RUN_SIZE / num_thread * (uint64_t)thread_id;
+-                uint64_t end_key = start_key + RUN_SIZE / num_thread;
+-
+                 clht_gc_thread_init(tds[thread_id].ht, tds[thread_id].id);
+                 barrier_cross(&barrier);
+ 
+-                for (uint64_t i = start_key; i < end_key; i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        clht_put(tds[thread_id].ht, keys[i], keys[i]);
+-                    } else if (ops[i] == OP_READ) {
+-                        uintptr_t val = clht_get(tds[thread_id].ht->ht, keys[i]);
+-                        if (val != keys[i]) {
+-                            std::cout << "[CLHT] wrong key read: " << val << "expected: " << keys[i] << std::endl;
+-                            exit(1);
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
++                while (cmd_streams[thread_id] >> op) {
++                    if (op == 'i') {
++                        cmd_streams[thread_id] >> std::hex >> k >> v;
++                        clht_put(tds[thread_id].ht, k, v);
++                    } else if (op == 'd') {
++                        cmd_streams[thread_id] >> std::hex >> k;
++                        clht_remove(tds[thread_id].ht, k);
++                    } else if (op == 'g') {
++                        cmd_streams[thread_id] >> std::hex >> k;
++                        clht_get(tds[thread_id].ht, k);
++                    } else if (op == 'u') {
++                        cmd_streams[thread_id] >> std::hex >> k >> v;
++                        clht_update(tds[thread_id].ht, k, v);
++                    } else {
++                        std::cerr << "Unsupported cmd\n";
++                        abort();
+                     }
+                 }
+             };
+@@ -1100,201 +326,24 @@ void ycsb_load_run_randint(int index_type, int wl, int kt, int ap, int num_threa
+ 
+             for (int i = 0; i < num_thread; i++)
+                 thread_group[i].join();
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+         }
+-        clht_gc_destroy(hashtable);
++        // clht_gc_destroy(hashtable);
+     } else if (index_type == TYPE_FASTFAIR) {
+-        fastfair::btree *bt = new fastfair::btree();
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, LOAD_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    bt->btree_insert(init_keys[i], (char *) &init_keys[i]);
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, RUN_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        bt->btree_insert(keys[i], (char *) &keys[i]);
+-                    } else if (ops[i] == OP_READ) {
+-                        uint64_t *ret = reinterpret_cast<uint64_t *>(bt->btree_search(keys[i]));
+-                        if (ret == NULL) {
+-                            //printf("NULL is found\n");
+-                        } else if (*ret != keys[i]) {
+-                            //printf("[FASTFAIR] wrong value is returned: <expected> %lu\n", keys[i]);
+-                            //exit(1);
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        uint64_t buf[200];
+-                        int resultsFound = 0;
+-                        bt->btree_search_range (keys[i], UINT64_MAX, buf, ranges[i], resultsFound);
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+     } else if (index_type == TYPE_LEVELHASH) {
+-        Hash *table = new LevelHashing(10);
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, LOAD_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    table->Insert(init_keys[i], reinterpret_cast<const char*>(&init_keys[i]));
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, RUN_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        table->Insert(keys[i], reinterpret_cast<const char*>(&keys[i]));
+-                    } else if (ops[i] == OP_READ) {
+-                        auto val = table->Get(keys[i]);
+-                        if (val == NONE) {
+-                            std::cout << "[Level Hashing] wrong key read: " << *(uint64_t *)val << " expected: " << keys[i] << std::endl;
+-                            exit(1);
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+     } else if (index_type == TYPE_CCEH) {
+-        Hash *table = new CCEH(2);
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, LOAD_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    table->Insert(init_keys[i], reinterpret_cast<const char*>(&init_keys[i]));
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, RUN_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        table->Insert(keys[i], reinterpret_cast<const char*>(&keys[i]));
+-                    } else if (ops[i] == OP_READ) {
+-                        uint64_t *val = reinterpret_cast<uint64_t *>(const_cast<char *>(table->Get(keys[i])));
+-                        if (val == NULL) {
+-                            //std::cout << "[CCEH] wrong value is read <expected:> " << keys[i] << std::endl;
+-                            //exit(1);
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+     } else if (index_type == TYPE_WOART) {
+-#ifndef STRING_TYPE
+-        woart_tree *t = (woart_tree *)malloc(sizeof(woart_tree));
+-        woart_tree_init(t);
+-
+-        {
+-            // Load
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, LOAD_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    woart_insert(t, init_keys[i], sizeof(uint64_t), &init_keys[i]);
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: load, %f ,ops/us\n", (LOAD_SIZE * 1.0) / duration.count());
+-        }
+-
+-        {
+-            // Run
+-            auto starttime = std::chrono::system_clock::now();
+-            tbb::parallel_for(tbb::blocked_range<uint64_t>(0, RUN_SIZE), [&](const tbb::blocked_range<uint64_t> &scope) {
+-                for (uint64_t i = scope.begin(); i != scope.end(); i++) {
+-                    if (ops[i] == OP_INSERT) {
+-                        woart_insert(t, keys[i], sizeof(uint64_t), &keys[i]);
+-                    } else if (ops[i] == OP_READ) {
+-                        uint64_t *ret = reinterpret_cast<uint64_t *> (woart_search(t, keys[i], sizeof(uint64_t)));
+-                        if (*ret != keys[i]) {
+-                            printf("[WOART] expected = %lu, search value = %lu\n", keys[i], *ret);
+-                            exit(1);
+-                        }
+-                    } else if (ops[i] == OP_SCAN) {
+-                        unsigned long buf[200];
+-                        woart_scan(t, keys[i], ranges[i], buf);
+-                    } else if (ops[i] == OP_UPDATE) {
+-                        std::cout << "NOT SUPPORTED CMD!\n";
+-                        exit(0);
+-                    }
+-                }
+-            });
+-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+-                    std::chrono::system_clock::now() - starttime);
+-            printf("Throughput: run, %f ,ops/us\n", (RUN_SIZE * 1.0) / duration.count());
+-        }
+-#endif
+     }
+ }
+ 
+ int main(int argc, char **argv) {
+-    if (argc != 6) {
+-        std::cout << "Usage: ./ycsb [index type] [ycsb workload type] [key distribution] [access pattern] [number of threads]\n";
+-        std::cout << "1. index type: art hot bwtree masstree clht\n";
++    if (argc != 3) {
++        std::cout << "Usage: ./ycsb [index type] [number of threads]\n";
++        std::cout << "   index type: art hot bwtree masstree clht\n";
+         std::cout << "               fastfair levelhash cceh woart\n";
+-        std::cout << "2. ycsb workload type: a, b, c, e\n";
+-        std::cout << "3. key distribution: randint, string\n";
+-        std::cout << "4. access pattern: uniform, zipfian\n";
+-        std::cout << "5. number of threads (integer)\n";
+         return 1;
+     }
+ 
+-    printf("%s, workload%s, %s, %s, threads %s\n", argv[1], argv[2], argv[3], argv[4], argv[5]);
++    printf("%s, threads %s\n", argv[1], argv[2]);
+ 
+     int index_type;
+     if (strcmp(argv[1], "art") == 0)
+@@ -1324,80 +373,10 @@ int main(int argc, char **argv) {
+         exit(1);
+     }
+ 
+-    int wl;
+-    if (strcmp(argv[2], "a") == 0) {
+-        wl = WORKLOAD_A;
+-    } else if (strcmp(argv[2], "b") == 0) {
+-        wl = WORKLOAD_B;
+-    } else if (strcmp(argv[2], "c") == 0) {
+-        wl = WORKLOAD_C;
+-    } else if (strcmp(argv[2], "d") == 0) {
+-        wl = WORKLOAD_D;
+-    } else if (strcmp(argv[2], "e") == 0) {
+-        wl = WORKLOAD_E;
+-    } else {
+-        fprintf(stderr, "Unknown workload: %s\n", argv[2]);
+-        exit(1);
+-    }
+-
+-    int kt;
+-    if (strcmp(argv[3], "randint") == 0) {
+-        kt = RANDINT_KEY;
+-    } else if (strcmp(argv[3], "string") == 0) {
+-        kt = STRING_KEY;
+-    } else {
+-        fprintf(stderr, "Unknown key type: %s\n", argv[3]);
+-        exit(1);
+-    }
+-
+-    int ap;
+-    if (strcmp(argv[4], "uniform") == 0) {
+-        ap = UNIFORM;
+-    } else if (strcmp(argv[4], "zipfian") == 0) {
+-        ap = ZIPFIAN;
+-    } else {
+-        fprintf(stderr, "Unknown access pattern: %s\n", argv[4]);
+-        exit(1);
+-    }
+-
+-    int num_thread = atoi(argv[5]);
++    int num_thread = atoi(argv[2]);
+     tbb::task_scheduler_init init(num_thread);
+ 
+-    if (kt != STRING_KEY) {
+-        std::vector<uint64_t> init_keys;
+-        std::vector<uint64_t> keys;
+-        std::vector<int> ranges;
+-        std::vector<int> ops;
+-
+-        init_keys.reserve(LOAD_SIZE);
+-        keys.reserve(RUN_SIZE);
+-        ranges.reserve(RUN_SIZE);
+-        ops.reserve(RUN_SIZE);
+-
+-        memset(&init_keys[0], 0x00, LOAD_SIZE * sizeof(uint64_t));
+-        memset(&keys[0], 0x00, RUN_SIZE * sizeof(uint64_t));
+-        memset(&ranges[0], 0x00, RUN_SIZE * sizeof(int));
+-        memset(&ops[0], 0x00, RUN_SIZE * sizeof(int));
+-
+-        ycsb_load_run_randint(index_type, wl, kt, ap, num_thread, init_keys, keys, ranges, ops);
+-    } else {
+-        std::vector<Key *> init_keys;
+-        std::vector<Key *> keys;
+-        std::vector<int> ranges;
+-        std::vector<int> ops;
+-
+-        init_keys.reserve(LOAD_SIZE);
+-        keys.reserve(RUN_SIZE);
+-        ranges.reserve(RUN_SIZE);
+-        ops.reserve(RUN_SIZE);
+-
+-        memset(&init_keys[0], 0x00, LOAD_SIZE * sizeof(Key *));
+-        memset(&keys[0], 0x00, RUN_SIZE * sizeof(Key *));
+-        memset(&ranges[0], 0x00, RUN_SIZE * sizeof(int));
+-        memset(&ops[0], 0x00, RUN_SIZE * sizeof(int));
+-
+-        ycsb_load_run_string(index_type, wl, kt, ap, num_thread, init_keys, keys, ranges, ops);
+-    }
++    ycsb_load_run_randint(index_type, num_thread);
+ 
+     return 0;
+ }

@@ -1,0 +1,413 @@
+diff --git a/concurrent_pmdk/Makefile b/concurrent_pmdk/Makefile
+index db09d01..ca5aa5f 100644
+--- a/concurrent_pmdk/Makefile
++++ b/concurrent_pmdk/Makefile
+@@ -1,17 +1,50 @@
+ .PHONY: all clean
+ .DEFAULT_GOAL := all
+ 
+-LIBS=-lrt -lm -pthread -lpmemobj
+-INCLUDES=-I./include
+-CFLAGS=-O0 -std=c++11 -g
++#################################
++# Enable pmrace by default
++CXX = clang++
++ENABLE_PMRACE = 1
++#################################
+ 
+-output = btree_concurrent btree_concurrent_mixed
++INSTRUMENT_PASS_DIR = $(PMRACE_DIR)/instrument
+ 
+-all: main
++PMRACEPASS_FLAGS = -stdlib=libc++ -mclflushopt -mclwb -Xclang -load -Xclang $(INSTRUMENT_PASS_DIR)/libPMRacePass.so -fsanitize=dataflow -mllvm -dfsan-abilist=$(INSTRUMENT_PASS_DIR)/pmrace-ABI.txt
++RACE_OUTPUT_FLAGS = -mllvm -coverage-path -mllvm output/cov -mllvm -race-path -mllvm output/race.csv -mllvm -unflushed-path -mllvm output/unflushed.csv -mllvm -meta-path -mllvm $@.json
++RACE_PMDK_MODE_FLAGS = -mllvm -pmrace-mode -mllvm pmdk
++PMRACEHOOK_LD_FLAGS = -L$(INSTRUMENT_PASS_DIR) -Wl,-rpath='$(INSTRUMENT_PASS_DIR)' -lPMRaceHook -fsanitize=dataflow -stdlib=libc++
+ 
+-main: src/test.cpp
+-	g++ $(CFLAGS) -o btree_concurrent src/test.cpp $(LIBS) -DCONCURRENT
+-	g++ $(CFLAGS) -o btree_concurrent_mixed src/test.cpp $(LIBS) -DCONCURRENT -DMIXED
++PMDK_DIR = $(PMRACE_DIR)/deps/pmdk
++PMDK_INSTALL_DIR = $(PMDK_DIR)/install
++PMDK_FLAGS = -I$(PMDK_INSTALL_DIR)/include
++PMDK_LD_FLAGS = -L$(PMDK_INSTALL_DIR)/lib/pmdk_debug -Wl,-rpath='$(PMDK_INSTALL_DIR)/lib/pmdk_debug' -lpmem -lpmemobj
+ 
+-clean: 
+-	rm $(output)
++DEBUGFLAGS = -g -O0
++
++ifeq ($(ENABLE_PMRACE),1)
++	CFLAGS += $(PMRACEPASS_FLAGS) $(RACE_OUTPUT_FLAGS) $(RACE_PMDK_MODE_FLAGS) $(PMDK_FLAGS) $(DEBUGFLAGS) -DPMRACE_ENABLED -I$(LLVM_DIR)/include/c++/v1
++	LDFLAGS += $(PMRACEHOOK_LD_FLAGS) $(PMDK_LD_FLAGS) -lpthread -L$(LLVM_DIR)/lib
++else
++	LDFLAGS += -lpmem -lpmemobj -lpthread
++endif
++
++LDFLAGS += -lrt -lm
++CFLAGS += -std=c++11
++
++
++all: btree_concurrent btree_concurrent_mixed
++
++btree_concurrent: btree_concurrent.o
++	$(CXX) -o $@ $^ $(LDFLAGS)
++
++btree_concurrent_mixed: btree_concurrent_mixed.o
++	$(CXX) -o $@ $^ $(LDFLAGS)
++
++btree_concurrent.o: src/test.cpp
++	$(CXX) $(CFLAGS) -c -o $@ src/test.cpp -DCONCURRENT
++
++btree_concurrent_mixed.o: src/test.cpp
++	$(CXX) $(CFLAGS) -c -o $@ src/test.cpp -DCONCURRENT -DMIXED
++
++clean:
++	rm -f btree_concurrent btree_concurrent_mixed *.o *.json
+diff --git a/concurrent_pmdk/src/test.cpp b/concurrent_pmdk/src/test.cpp
+index 12efd0b..9b4788c 100644
+--- a/concurrent_pmdk/src/test.cpp
++++ b/concurrent_pmdk/src/test.cpp
+@@ -1,11 +1,26 @@
++#include <sstream>
++#include <string>
+ #include "btree.h"
++#include <fstream>
++#define POOL_SIZE (32 * 1024 * 1024UL) // 32MB
++#include <mutex>
++#ifndef __AFL_FUZZ_TESTCASE_LEN
++ssize_t fuzz_len;
++#define __AFL_FUZZ_TESTCASE_LEN fuzz_len
++unsigned char fuzz_buf[1024000];
++#define __AFL_FUZZ_TESTCASE_BUF fuzz_buf
++#define __AFL_FUZZ_INIT() void sync()
++#define __AFL_INIT() \
++  ((fuzz_len = read(0, fuzz_buf, sizeof(fuzz_buf))) > 0 ? 1 : 0)
++#endif
+ 
+ /*
+  *  *file_exists -- checks if file exists
+  *   */
+ static inline int file_exists(char const *file) { return access(file, F_OK); }
+-
+-void clear_cache() {
++std::string get_workload_path();
++void clear_cache()
++{
+   // Remove cache
+   int size = 256 * 1024 * 1024;
+   char *garbage = new char[size];
+@@ -16,25 +31,24 @@ void clear_cache() {
+   delete[] garbage;
+ }
+ 
++__AFL_FUZZ_INIT();
++
+ // MAIN
+-int main(int argc, char **argv) {
++int main(int argc, char **argv)
++{
+   // Parsing arguments
+   int numData = 0;
+   int n_threads = 1;
+-  char *input_path = (char *)std::string("../sample_input.txt").data();
+   char *persistent_path;
+ 
+   int c;
+-  while ((c = getopt(argc, argv, "n:w:t:i:p:")) != -1) {
+-    switch (c) {
+-    case 'n':
+-      numData = atoi(optarg);
+-      break;
++  while ((c = getopt(argc, argv, "t:p:")) != -1)
++  {
++    switch (c)
++    {
+     case 't':
+       n_threads = atoi(optarg);
+       break;
+-    case 'i':
+-      input_path = optarg;
+     case 'p':
+       persistent_path = optarg;
+     default:
+@@ -43,176 +57,130 @@ int main(int argc, char **argv) {
+   }
+ 
+   // Make or Read persistent pool
+-  TOID(btree) bt = TOID_NULL(btree);
++  TOID(btree)
++  bt = TOID_NULL(btree);
+   PMEMobjpool *pop;
+ 
+-  if (file_exists(persistent_path) != 0) {
+-    pop = pmemobj_create(persistent_path, "btree", 8000000000,
+-                         0666); // make 1GB memory pool
++  remove(persistent_path);
++  if (file_exists(persistent_path) != 0)
++  {
++    pop = pmemobj_create(persistent_path, "btree", POOL_SIZE, 0666);
+     bt = POBJ_ROOT(pop, btree);
+     D_RW(bt)->constructor(pop);
+-  } else {
++  }
++  else
++  {
+     pop = pmemobj_open(persistent_path, "btree");
+     bt = POBJ_ROOT(pop, btree);
+   }
+ 
+-  struct timespec start, end, tmp;
++  void *buf = malloc(POOL_SIZE);
+ 
+-  // Reading data
+-  entry_key_t *keys = new entry_key_t[numData];
++#ifndef PMRACE_ENABLED
++  memcpy(buf, pop, POOL_SIZE);
++#endif
+ 
+-  ifstream ifs;
+-  ifs.open(input_path);
++  __AFL_INIT();
+ 
+-  if (!ifs) {
+-    cout << "input loading error!" << endl;
+-  }
++  unsigned char *afl_testcase_buf = __AFL_FUZZ_TESTCASE_BUF;
++  int afl_testcase_len = __AFL_FUZZ_TESTCASE_LEN;
++  atomic<int> next_thread_id;
++  int i;
++  char *tok;
++  vector<istringstream> cmd_streams;
+ 
+-  for (int i = 0; i < numData; ++i) {
+-    ifs >> keys[i];
+-  }
+-  ifs.close();
++  next_thread_id.store(0);
+ 
+-  clock_gettime(CLOCK_MONOTONIC, &start);
++#ifndef PMRACE_ENABLED
++  memcpy(pop, buf, POOL_SIZE);
++#endif
+ 
+-  long half_num_data = numData / 2;
++  for (i = 0; i < n_threads; ++i)
++  {
++    if (i == 0)
++    {
++      tok = strtok((char *)afl_testcase_buf, "\t");
++    }
++    else
++    {
++      tok = strtok(NULL, "\t");
++    }
+ 
+-  // Warm-up! Insert half of input size
+-  for (int i = 0; i < half_num_data; ++i) {
+-    D_RW(bt)->btree_insert(keys[i], (char *)keys[i]);
++    if (tok == NULL)
++    {
++      cmd_streams.emplace_back(string());
++    }
++    else
++    {
++      cmd_streams.emplace_back(tok);
++    }
+   }
+-  cout << "Warm-up!" << endl;
+-
+-  clock_gettime(CLOCK_MONOTONIC, &end);
+-  long long elapsedTime =
+-      (end.tv_sec - start.tv_sec) * 1000000000 + (end.tv_nsec - start.tv_nsec);
+-  clear_cache();
+-
++  std::ofstream workload_out(get_workload_path()); std::mutex workload_m;
++  // clear_cache();
+   // Multithreading
+-  vector<future<void>> futures(n_threads);
+-
+-  long data_per_thread = half_num_data / n_threads;
+-
+-#ifndef MIXED
+-  // Search
+-  clock_gettime(CLOCK_MONOTONIC, &start);
+-
+-  for (int tid = 0; tid < n_threads; tid++) {
+-    int from = data_per_thread * tid;
+-    int to = (tid == n_threads - 1) ? half_num_data : from + data_per_thread;
++  vector<thread> thread_groups;
++  auto func = [&]() {
++    int tid = next_thread_id.fetch_add(1);
++    char op;
++    auto &cmd_stream = cmd_streams[tid];
++    entry_key_t k, min, max;
++    string v;
++
++    while (cmd_stream >> op)
++    {
++      if (op == 'i')
++      { 
++        cmd_stream >> hex >> k >> v; std::stringstream ss; ss << op << ";" << k << ";" << (uint64_t) v.c_str() << std::endl; workload_m.lock(); workload_out << ss.str(); workload_m.unlock();
++        char *tmp = strdup(v.c_str());
++        D_RW(bt)->btree_insert(k, tmp);
++        free(tmp);
++      }
++      else if (op == 'd')
++      {
++        cmd_stream >> hex >> k; std::stringstream ss; ss << op << ";" << k << std::endl; workload_m.lock(); workload_out << ss.str(); workload_m.unlock();
++        D_RW(bt)->btree_delete(k);
++      }
++      else if (op == 's')
++      {
++        cmd_stream >> hex >> k; std::stringstream ss; ss << op << ";" << k << std::endl; workload_m.lock(); workload_out << ss.str(); workload_m.unlock();
++        D_RW(bt)->btree_search(k);
++      }
++      else if (op == 'r')
++      {
++        cmd_stream >> hex >> min >> max; std::stringstream ss; ss << op << ";" << min << ";" << max << std::endl; workload_m.lock(); workload_out << ss.str(); workload_m.unlock();
++        D_RW(bt)->btree_search_range(min, max, (unsigned long *)buf);
++      }
++      else if (op == 'p')
++      {
++        D_RW(bt)->printAll(); std::stringstream ss; ss << op << std::endl; workload_m.lock(); workload_out << ss.str(); workload_m.unlock();
++      }
++      else
++      {
++        std::cerr << "Unsupported cmd\n";
++        abort();
++      }
++    }
++  };
+ 
+-    auto f = async(launch::async,
+-                   [&bt, &keys](int from, int to) {
+-                     for (int i = from; i < to; ++i)
+-                       D_RW(bt)->btree_search(keys[i]);
+-                   },
+-                   from, to);
+-    futures.push_back(move(f));
+-  }
+-  for (auto &&f : futures)
+-    if (f.valid())
+-      f.get();
+-
+-  clock_gettime(CLOCK_MONOTONIC, &end);
+-  elapsedTime =
+-      (end.tv_sec - start.tv_sec) * 1000000000 + (end.tv_nsec - start.tv_nsec);
+-  cout << "Concurrent searching with " << n_threads
+-       << " threads (usec) : " << elapsedTime / 1000 << endl;
+-
+-  clear_cache();
+-  futures.clear();
+-
+-  // Insert
+-  clock_gettime(CLOCK_MONOTONIC, &start);
+-
+-  for (int tid = 0; tid < n_threads; tid++) {
+-    int from = half_num_data + data_per_thread * tid;
+-    int to = (tid == n_threads - 1) ? numData : from + data_per_thread;
+-
+-    auto f = async(launch::async,
+-                   [&bt, &keys](int from, int to) {
+-                     for (int i = from; i < to; ++i)
+-                       D_RW(bt)->btree_insert(keys[i], (char *)keys[i]);
+-                   },
+-                   from, to);
+-    futures.push_back(move(f));
+-  }
+-  for (auto &&f : futures)
+-    if (f.valid())
+-      f.get();
+-
+-  clock_gettime(CLOCK_MONOTONIC, &end);
+-  elapsedTime =
+-      (end.tv_sec - start.tv_sec) * 1000000000 + (end.tv_nsec - start.tv_nsec);
+-  cout << "Concurrent inserting with " << n_threads
+-       << " threads (usec) : " << elapsedTime / 1000 << endl;
+-#else
+-  clock_gettime(CLOCK_MONOTONIC, &start);
+-
+-  for (int tid = 0; tid < n_threads; tid++) {
+-    int from = half_num_data + data_per_thread * tid;
+-    int to = (tid == n_threads - 1) ? numData : from + data_per_thread;
+-
+-    auto f = async(launch::async,
+-                   [&bt, &keys, &half_num_data](int from, int to) {
+-                     for (int i = from; i < to; ++i) {
+-                       int sidx = i - half_num_data;
+-
+-                       int jid = i % 4;
+-                       switch (jid) {
+-                       case 0:
+-                         D_RW(bt)->btree_insert(keys[i], (char *)keys[i]);
+-                         for (int j = 0; j < 4; j++)
+-                           D_RW(bt)->btree_search(
+-                               keys[(sidx + j + jid * 8) % half_num_data]);
+-                         D_RW(bt)->btree_delete(keys[i]);
+-                         break;
+-
+-                       case 1:
+-                         for (int j = 0; j < 3; j++)
+-                           D_RW(bt)->btree_search(
+-                               keys[(sidx + j + jid * 8) % half_num_data]);
+-                         D_RW(bt)->btree_insert(keys[i], (char *)keys[i]);
+-                         D_RW(bt)->btree_search(
+-                             keys[(sidx + 3 + jid * 8) % half_num_data]);
+-                         break;
+-                       case 2:
+-                         for (int j = 0; j < 2; j++)
+-                           D_RW(bt)->btree_search(
+-                               keys[(sidx + j + jid * 8) % half_num_data]);
+-                         D_RW(bt)->btree_insert(keys[i], (char *)keys[i]);
+-                         for (int j = 2; j < 4; j++)
+-                           D_RW(bt)->btree_search(
+-                               keys[(sidx + j + jid * 8) % half_num_data]);
+-                         break;
+-                       case 3:
+-                         for (int j = 0; j < 4; j++)
+-                           D_RW(bt)->btree_search(
+-                               keys[(sidx + j + jid * 8) % half_num_data]);
+-                         D_RW(bt)->btree_insert(keys[i], (char *)keys[i]);
+-                         break;
+-                       default:
+-                         break;
+-                       }
+-                     }
+-                   },
+-                   from, to);
+-    futures.push_back(move(f));
++  for (int tid = 0; tid < n_threads; tid++)
++  {
++    thread_groups.emplace_back(func);
+   }
+ 
+-  for (auto &&f : futures)
+-    if (f.valid())
+-      f.get();
+-
+-  clock_gettime(CLOCK_MONOTONIC, &end);
+-  elapsedTime =
+-      (end.tv_sec - start.tv_sec) * 1000000000 + (end.tv_nsec - start.tv_nsec);
+-  cout << "Concurrent inserting and searching with " << n_threads
+-       << " threads (usec) : " << elapsedTime / 1000 << endl;
+-#endif
+-
+-  delete[] keys;
++  for (auto &&f : thread_groups)
++  {
++    f.join();
++  }
+ 
++  free(buf);
+   pmemobj_close(pop);
+   return 0;
+ }
++
++std::string get_workload_path() {
++  std::string path = getenv("PMRACE_RACE_PATH");
++
++  path.replace(path.cend()-8, path.cend(), "workload.csv");
++
++  return path;
++}
+\ No newline at end of file

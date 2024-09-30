@@ -1,0 +1,4 @@
+output/
+pmrace_results/
+**/__pycache__/
+**/*.log

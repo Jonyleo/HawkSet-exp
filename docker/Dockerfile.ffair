@@ -1,5 +1,7 @@
-FROM hawkset
+ARG HAWKSET_VERSION
+FROM hawkset-exp-${HAWKSET_VERSION}
 
+RUN apt update
 RUN apt install -y autoconf automake build-essential cmake libsnappy-dev \
     libbz2-dev zlib1g-dev libgflags-dev
 
@@ -12,8 +14,6 @@ RUN git clone https://github.com/DICL/FAST_FAIR
 WORKDIR $TOOL_ROOT/FAST_FAIR
 RUN git checkout 0f047e8
 WORKDIR $TOOL_ROOT/FAST_FAIR/concurrent_pmdk
-
-COPY patches $TOOL_ROOT/patches
 
 # Apply patch
 RUN git apply $TOOL_ROOT/patches/fast_fair.diff

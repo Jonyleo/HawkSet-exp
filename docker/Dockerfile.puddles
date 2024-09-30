@@ -1,0 +1,19 @@
+ARG HAWKSET_VERSION
+FROM hawkset-exp-${HAWKSET_VERSION}
+
+RUN apt update
+RUN apt install -y autoconf automake build-essential cmake  \
+    python3-pip clang libboost-system-dev libarchive-dev
+
+RUN python3 -m pip install zenodo_get
+RUN zenodo_get https://zenodo.org/records/8400339
+RUN tar xvzf libpuddles-ae-anon.tar.gz
+
+# Remove PMDK
+WORKDIR ${TOOL_ROOT}/deps/pmdk
+RUN make uninstall
+
+# Build puddles
+RUN ./setup-and-run.sh --skip-run
+ENV LIBPUDDLES_PUDDLED_PORT 1234
+ENV LIBPUDDLES_DIR /mnt/pmem0/libpuddles 

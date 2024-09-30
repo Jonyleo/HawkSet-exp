@@ -22,17 +22,21 @@ do
 	do
 		info=$OUTPUT/$LOAD-irh$HEURISTIC.info
 		log=$OUTPUT/$LOAD-irh$HEURISTIC.log
-
+	
 		echo "-------------------------" 
-		echo "app: $APP, heuristics: $HEURISTIC, LOAD: $LOAD" 
-
+		if [[ ! -z $3 ]] ; then
+			echo "app: $APP, heuristics: $HEURISTIC, LOAD: $LOAD, MODE: $3" 
+		else
+			echo "app: $APP, heuristics: $HEURISTIC, LOAD: $LOAD" 	
+		fi
+		echo "output: $OUTPUT"
+		
 		PROFILE=1 \
 		MODE=$3 \
 		WORKLOAD=$LOAD \
 			./$APP.sh \
 			-irh $HEURISTIC \
 			-out $log \
-			> /dev/null \
 			2> $info
 
 	done

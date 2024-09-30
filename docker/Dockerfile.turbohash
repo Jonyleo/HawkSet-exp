@@ -1,6 +1,9 @@
-FROM hawkset
+ARG HAWKSET_VERSION
+FROM hawkset-exp-${HAWKSET_VERSION}
 
-RUN apt install -y libgflags-dev libpmemobj-dev libpmem-dev libvmem-dev
+RUN apt update
+RUN apt install -y libgflags-dev libpmemobj-dev libpmem-dev libvmem-dev \
+	libtbb-dev libjemalloc-dev libgflags-dev
 
 WORKDIR $TOOL_ROOT
 RUN git clone https://github.com/hansonzhao007/TurboHash
@@ -8,11 +11,10 @@ RUN git clone https://github.com/hansonzhao007/TurboHash
 WORKDIR $TOOL_ROOT/TurboHash
 RUN git submodule init
 RUN git submodule update
-
-COPY patches $TOOL_ROOT/patches
-
 # Apply patch
 RUN git apply --ignore-space-change --ignore-whitespace $TOOL_ROOT/patches/turbohash.diff
 # Compile
-RUN bash buildall.sh ; exit 0
-RUN bash buildall.sh
+RUN mkdir release
+WORKDIR $TOOL_ROOT/TurboHash/release
+RUN cmake -DCMAKE_BUILD_TYPE=Debug .. && make -j
+

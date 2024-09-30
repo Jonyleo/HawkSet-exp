@@ -1,3 +1,6 @@
 [submodule "HawkSet"]
 	path = HawkSet
 	url = https://github.com/Jonyleo/HawkSet
+[submodule "pmrace-vagrant"]
+	path = pmrace-vagrant
+	url = https://github.com/yhuacode/pmrace-vagrant

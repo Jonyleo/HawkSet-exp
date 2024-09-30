@@ -6,9 +6,10 @@ fi
 
 rm ${PM_MOUNT}/* -f
 
- ./HawkSet \
+../scripts/HawkSet \
  	${@:1} \
  	-cfg $TOOL_ROOT/config/turbohash.cfg \
+	-cfg $TOOL_ROOT/config/pmdk.cfg \
  	-- \
 	../TurboHash/release/workload \
 	-i ../workloads/ycsb_$WORKLOAD.txt \

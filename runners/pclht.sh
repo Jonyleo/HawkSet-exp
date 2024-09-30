@@ -6,7 +6,7 @@ fi
 
 rm ${PM_MOUNT}/pclht -f
 
-./HawkSet \
+../scripts/HawkSet \
 	${@:1} \
 	-cfg $TOOL_ROOT/config/pclht.cfg \
 	-cfg $TOOL_ROOT/config/pmdk.cfg \
