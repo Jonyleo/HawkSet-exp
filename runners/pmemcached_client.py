@@ -5,9 +5,10 @@ from pymemcache.client.base import Client, MemcacheClientError
 def get_random_dist_integer(key_range: int, n: int, zipf: bool =False):
     dist = []
     if zipf:
-        dist = random.normal(loc=key_range/2, scale=key_range/40, size=n)
-    else:
         dist = random.zipf(a=2, size=n)
+    else:
+        dist = random.normal(loc=key_range/2, scale=key_range/40, size=n)
+
     return list(map(int, dist))
 
 cmds = [
@@ -63,10 +64,12 @@ def main():
     c = Client(args.endpoint, default_noreply=True)
 
     print("Loading...")
-    segment = workload_size // n_threads
+    segment = 1000 // n_threads
     threads = []
     for x in range(n_threads):
         thread = threading.Thread(target=load, args=(Client(endpoint, default_noreply=False), segment*x, segment))
+        thread.start()
+        threads.append(thread)
     for thread in threads:
         thread.join()
     print("Load phase ended.")

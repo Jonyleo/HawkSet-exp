@@ -259,7 +259,7 @@ index 12efd0b..81e85fd 100644
 -                         break;
 -                       }
 +                       Operation & op = workload.ops[i];
-+                       unsigned long int x;
++                       unsigned long int x[1000];
 +
 +                       switch(op.type) {
 +                        case OperationType::INSERT:
@@ -275,7 +275,7 @@ index 12efd0b..81e85fd 100644
 +                          D_RW(bt)->btree_delete(op.key);
 +                          break;
 +                        case OperationType::RANGE:
-+                          D_RW(bt)->btree_search_range(op.key, op.value, &x);
++                          D_RW(bt)->btree_search_range(op.key, std::min(1000UL, op.value), x);
 +                          break;
 +                        case OperationType::PRINT:
 +                          D_RW(bt)->printAll();

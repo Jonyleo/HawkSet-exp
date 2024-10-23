@@ -5,7 +5,6 @@ if [ -z $WORKLOAD  ] ; then
 fi
 
 PM_FILE=${PM_MOUNT}pmemcached
-echo $PM_FILE
 rm ${PM_MOUNT}/pmemcached -f
 
 rm /tmp/m_sock -f

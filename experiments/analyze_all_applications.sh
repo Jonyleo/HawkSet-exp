@@ -8,8 +8,6 @@ mkdir $PM_PATH/HawkSet/pmem1 -p
 HAWKSET_POOL=$PM_PATH/HawkSet
 HAWKSET_ROOT=$(pwd)/..
 
-
-
 mounts="-v $HAWKSET_POOL:/mnt/pmem \
         -v $HAWKSET_POOL/pmem0:/mnt/pmem0 \
         -v $HAWKSET_POOL/pmem1:/mnt/pmem1 \
@@ -21,14 +19,12 @@ mounts="-v $HAWKSET_POOL:/mnt/pmem \
         -v $HAWKSET_ROOT/workloads:/root/workloads \
         -v $HAWKSET_ROOT/config:/root/config"
 
-echo $HAWKSET_ROOT/HawkSet/scripts
-ls $HAWKSET_ROOT/HawkSet/scripts
 
 single_test() {
 	if [ -z $DOCKER_PROFILE ] ; then
 		DOCKER_PROFILE=$1
 	fi
-        docker run --workdir /root/runners ${mounts} $DOCKER_PROFILE ./profile.sh $1 $report_folder $2
+        docker run --workdir /root/runners ${mounts} $DOCKER_PROFILE timeout 10m ./profile.sh $1 $report_folder $2
 	unset DOCKER_PROFILE
 }
 
@@ -42,11 +38,14 @@ full_test() {
         single_test pmasstree
         single_test madfs zipf_4k
 	DOCKER_PROFILE=durinn single_test phot
-	DOCKER_PROFILE=durinn single_test part
+#	DOCKER_PROFILE=durinn single_test part
+        single_test pmemcached
+	single_test wipe
+	single_test apex
 }
 
 
-for i in $(seq 1 $1) ; do
-        report_folder=../output/full_exp/run_$i
+for i in $(seq 1 $2) ; do
+        report_folder=../output/$1/run_$i
         full_test
 done

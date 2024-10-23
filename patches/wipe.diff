@@ -20,8 +20,31 @@ index c0d2ff9..401c5ce 100644
  
  # MK for RMI
  link_directories(${MKL_LINK_DIRECTORY})
+diff --git a/src/letree.h b/src/letree.h
+index 294293a..34193f4 100644
+--- a/src/letree.h
++++ b/src/letree.h
+@@ -13,7 +13,7 @@
+ #include "debug.h"
+ #include <pthread.h>
+ 
+-// #define MULTI_THREAD // comment this line for single thread operation
++#define MULTI_THREAD // comment this line for single thread operation
+ 
+ namespace letree
+ {
+@@ -833,6 +833,9 @@ namespace letree
+         pthread_mutex_lock(&lock_space[group_id]);
+ #endif
+         auto ret = group_space[group_id].Update(clevel_mem_, key, value);
++#ifdef MULTI_THREAD
++        pthread_mutex_unlock(&lock_space[group_id]);
++#endif
+         return ret;
+     }
+ 
 diff --git a/test/example.cc b/test/example.cc
-index 597d11a..234ea22 100644
+index 597d11a..57bccc3 100644
 --- a/test/example.cc
 +++ b/test/example.cc
 @@ -7,122 +7,149 @@ using ycsbc::KvDB;
@@ -242,10 +265,10 @@ index 597d11a..234ea22 100644
 +
 +                       switch(op.type) {
 +                        case OperationType::INSERT:
-+                          db->Update(op.key, op.value);
++                          db->Put(op.key, op.value);
 +                          break;
 +                        case OperationType::UPDATE:
-+                          db->Put(op.key, op.value);
++                          db->Update(op.key, op.value);
 +                          break;
 +
 +                        case OperationType::GET:

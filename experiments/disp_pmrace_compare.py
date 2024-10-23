@@ -1,40 +1,57 @@
 import os
 import sys
 import glob
-from parse_races import parse_bugs
 from utils import *
 
-if __name__ == "__main__":
-	app = sys.argv[1]
-	workload_dir = sys.argv[2] + os.sep + app 
-	pmrace_dir = sys.argv[2] + os.sep + app + "-clean"
-	hawkset_dir = sys.argv[3] + os.sep + app
-	pmrace_time = int(sys.argv[4])
+from parse_races import parse_bugs
 
-	n_executions = len(glob.glob(pmrace_dir + os.sep + "seed*" + os.sep + "*---cov"))
-	n_workloads = 0
-	n_ops = 0
-
-
-	for workload in glob.glob(workload_dir + os.sep + "seed*" + os.sep + "*---workload.csv"):
-		with open(workload, "r") as f_workload:
-			n_workloads += 1
-			n_ops += len(f_workload.readlines())
-
-
-	races_found_by_pmrace = []
-	for race in glob.glob(pmrace_dir + os.sep + "seed*" + os.sep + "*---race.csv.parsed"):
-		if found_bug_pmrace(app, race):
-			races_found_by_pmrace.append(race)
+def test_bug(app, write, read):
+	if app == "fast_fair" or True:
+		return "src/btree.h:571" in write and (
+			   "src/btree.h:876" in read or "src/btree.h:878" in read or "src/btree.h:886" in read
+			)
+	elif app == "pclht":
+		return "clht_lb_res.c:804" in write and (
+			   "src/clht_lb_res.c:877" in read or "src/clht_lb_res.c:717" in read or 
+			   "src/clht_lb_res.c:373" in read or "src/clht_lb_res.c:431" in read or
+			   "src/clht_lb_res.c:578" in read or "src/clht_lb_res.c:528" in read or 
+			   "src/clht_gc.c:103" in read or "src/clht_gc.c:132" in read or 
+			   "src/clht_gc.c:154" in read
+			)
 
 
+def found_bug_hawkset(app, filename):
+	with open(filename, "r") as f_race:
+		bugs = parse_bugs(f_race, None)
 
-	avg_ops = n_ops / n_workloads
+		for write, _, reads in bugs:
 
+			for read in reads:
+				if test_bug(app, write[0], read[0]):
+					return True
+
+	return False
+
+import math
+
+def calc_attr(n_runs_hawkset, n_races_found_by_hawkset, hawkset_time):
+	e_execs = n_runs_hawkset - n_races_found_by_hawkset
+	s_execs = n_races_found_by_hawkset
+	t = hawkset_time / n_runs_hawkset
+
+	attr = 0
+	div = 0
+
+	for i in range(0, e_execs + 1):
+		attr += math.comb(e_execs, i) * s_execs * t * (i+1)
+		div += math.comb(e_execs, i) * s_execs
+
+	return attr/div
+
+
+def get_vals(app, hawkset_dir):
 	hawkset_time = 0
-
 	n_runs_hawkset = 0
-
 
 	for result in glob.glob(hawkset_dir + os.sep  + "*.info"):
 		n_runs_hawkset += 1
@@ -42,35 +59,42 @@ if __name__ == "__main__":
 
 		hawkset_time += info["elapsed"]
 
-	print(hawkset_time)
 
 	n_races_found_by_hawkset = 0
 	for race in glob.glob(hawkset_dir + os.sep  + "*.log"):
 		if found_bug_hawkset(app, race):
 			n_races_found_by_hawkset += 1
 
-	assert n_executions == n_runs_hawkset
+	print(n_runs_hawkset, n_races_found_by_hawkset, hawkset_time, hawkset_dir)
 
-# TODO change to 600
+	attr = calc_attr(n_runs_hawkset, n_races_found_by_hawkset, hawkset_time)
 
-	print(races_found_by_pmrace)
+	#print(f"HawkSet's analysis time (per workload): {hawkset_time / n_runs_hawkset:.4f} s")
+	#print(f"HawkSet's analysis time (total): {hawkset_time:.4f} s")
+	#print(f"HawkSet's bug finding efficacy: {n_races_found_by_hawkset / n_runs_hawkset * 100:.2f}% ({n_races_found_by_hawkset} out of {n_runs_hawkset})")	
+	#print(f"Avg time to detect race: {hawkset_time / (n_races_found_by_hawkset):.2f}")
 
-	races_found_by_pmrace = len(races_found_by_pmrace)
 
-	print(f"Workloads executed: {n_executions}")
-	print(f"Average workload size (ops): {avg_ops:.0f}")
+	return attr, hawkset_time, n_races_found_by_hawkset
 
-	print(f"PMRace's analysis time (per workload): {pmrace_time / n_executions:.4f} s")
-	print(f"PMRace's analysis time (total): {pmrace_time} s")	
-	print(f"PMRace's bug finding efficacy: {races_found_by_pmrace / n_executions * 100:.2f}% ({races_found_by_pmrace} out of {n_executions})")	
-	print(f"Avg time to detect race: {pmrace_time / (races_found_by_pmrace):.2f}")
+if __name__ == "__main__":
+	app = sys.argv[1]
+	hawkset_dir = sys.argv[2] 
 
-	print(f"HawkSet's analysis time (per workload): {hawkset_time / n_executions:.4f} s")
-	print(f"HawkSet's analysis time (total): {hawkset_time:.4f} s")
-	print(f"HawkSet's bug finding efficacy: {n_races_found_by_hawkset / n_executions * 100:.2f}% ({n_races_found_by_hawkset} out of {n_executions})")	
-	print(f"Avg time to detect race: {hawkset_time / (n_races_found_by_hawkset):.2f}")
 
-	print(f"Execution speedup: {pmrace_time / hawkset_time:.2f}x")
-	print(f"Overall speedup: {hawkset_time / pmrace_time  * (n_races_found_by_hawkset / races_found_by_pmrace):.2f}x")
+	attr_avg = 0
+	time_avg = 0
+	races_found_avg = 0
+	for i in range(2,11):
+		attr, time, races = get_vals(app, hawkset_dir  + str(i))
 
-	
+		attr_avg += attr
+		time_avg += time
+		races_found_avg += races
+
+	attr_avg /= 9
+	time_avg /= 9
+	races_found_avg //= 9
+
+
+	print(attr_avg, time_avg, time_avg/240, races_found_avg, calc_attr(240,races_found_avg, time_avg))

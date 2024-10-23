@@ -10,3 +10,7 @@ echo Building Turbohash
 ./build.sh turbohash
 echo Building MadFS
 ./build.sh madfs
+echo Building WIPE
+./build.sh wipe
+echo Building memcached-pmem
+./build.sh pmemcached

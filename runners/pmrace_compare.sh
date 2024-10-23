@@ -41,6 +41,7 @@ for LOAD_FILE in ${TOOL_ROOT}${WORKLOAD_PATH} ; do
 		PROFILE=1 \
 		${TOOL_ROOT}/scripts/HawkSet \
 			-out $log \
+			-unpersisted \
 			-- \
 			${TOOL_ROOT}/FAST_FAIR/concurrent_pmdk/btree_concurrent_mixed \
 			-t 8 \
@@ -55,6 +56,7 @@ for LOAD_FILE in ${TOOL_ROOT}${WORKLOAD_PATH} ; do
 		PROFILE=1 \
 		${TOOL_ROOT}/scripts/HawkSet \
 			-out $log \
+			-unpersisted \
 			-cfg $TOOL_ROOT/config/pclht.cfg \
 			-cfg $TOOL_ROOT/config/pmdk.cfg \
 			-- \
