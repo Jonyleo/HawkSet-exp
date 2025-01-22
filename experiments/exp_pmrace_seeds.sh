@@ -2,6 +2,8 @@
 
 # Run all seeds under pmrace
 
+source setup.sh
+
 run_experiment() {
 	APP=$1
 	START=$2

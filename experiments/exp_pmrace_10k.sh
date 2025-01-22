@@ -1,5 +1,7 @@
 #!/usr/bin/bash
 
+source setup.sh
+
 run_pmrace() {
 	PMRACE_RESULT=`pwd`/pmrace_results/$1
 

@@ -1,12 +1,11 @@
 #!/bin/bash
 
-source config.sh
+source setup.sh
 
 mkdir $PM_PATH/HawkSet/pmem0 -p
 mkdir $PM_PATH/HawkSet/pmem1 -p
 
 HAWKSET_POOL=$PM_PATH/HawkSet
-HAWKSET_ROOT=$(pwd)/..
 
 mounts="-v $HAWKSET_POOL:/mnt/pmem \
         -v $HAWKSET_POOL/pmem0:/mnt/pmem0 \
@@ -24,12 +23,13 @@ single_test() {
 	if [ -z $DOCKER_PROFILE ] ; then
 		DOCKER_PROFILE=$1
 	fi
+        DOCKER_PROFILE=$DOCKER_PROFILE:hawkset-$HAWKSET_VERSION
         docker run --workdir /root/runners ${mounts} $DOCKER_PROFILE timeout 10m ./profile.sh $1 $report_folder $2
 	unset DOCKER_PROFILE
 }
 
 # Fresh build
-docker run --workdir /root/scripts ${mounts} hawkset-exp-$HAWKSET_VERSION sh -c  "./clean.sh && ./build.sh"
+docker run --workdir /root/scripts ${mounts} hawkset-exp:$HAWKSET_VERSION sh -c  "./clean.sh && ./build.sh"
 
 full_test() {
         single_test ffair
@@ -37,8 +37,7 @@ full_test() {
         single_test turbohash
         single_test pmasstree
         single_test madfs zipf_4k
-	DOCKER_PROFILE=durinn single_test phot
-#	DOCKER_PROFILE=durinn single_test part
+	DOCKER_PROFILE=durinn single_test part
         single_test pmemcached
 	single_test wipe
 	single_test apex

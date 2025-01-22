@@ -1,14 +1,10 @@
-#!/usr/bin/bash
+#!/bin/bash
 
-# Run all seeds under HawkSet
-
-source setup.sh
-
-do_test() {
+source config.sh
 
 HAWKSET_POOL="$PM_PATH/HawkSet"
 
-HAWKSET_MOUNTS="-v $HAWKSET_POOL:/mnt/pmem \
+mounts="-v $HAWKSET_POOL:/mnt/pmem \
         -v $HAWKSET_POOL/pmem0:/mnt/pmem0 \
         -v $HAWKSET_POOL/pmem1:/mnt/pmem1 \
         -v `pwd`/output:/root/output \
@@ -20,10 +16,8 @@ HAWKSET_MOUNTS="-v $HAWKSET_POOL:/mnt/pmem \
         -v `pwd`/config:/root/config"
 
 
-docker run -it $HAWKSET_MOUNTS --env WORKLOAD_PATH="/workloads/ff-seeds-old/*" --workdir /root/runners ffair ./pmrace_compare.sh /root/output/ff_seeds fast_fair 10000
-mv output/ff_seeds output/ff_seeds_$1
-}
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+        docker run --hostname=$1 --privileged -it -e "TERM=xterm-color" \
+                   --workdir /root/runners ${mounts} $1:hawkset-$HAWKSET_VERSION
+fi
 
-for i in $(seq 1 10) ; do
-	do_test $i
-done

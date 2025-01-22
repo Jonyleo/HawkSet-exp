@@ -1,5 +1,7 @@
 #!/usr/bin/bash
 
+source setup.sh
+
 TIME=$1
 EXTRA_TIME=$(expr $TIME + $TIME / 10)
 

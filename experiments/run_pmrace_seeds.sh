@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source setup.sh
+
 RESULTS_FOLDER=$1
 APP=$2
 START=$3
