@@ -9,7 +9,6 @@ fi
 if [ -z "$WORKLOADS" ] ; then
 	WORKLOADS="1000 10000 100000"
 fi
-WORKLOADS="100000"
 
 if [ $APP = "part"  ] ; then
 WORKLOADS="1000"
@@ -19,7 +18,6 @@ fi
 if [ -z "$HEURISTICS" ] ; then
         HEURISTICS="0 1"
 fi
-HEURISTICS=1
 
 mkdir $OUTPUT -p
 

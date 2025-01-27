@@ -1,480 +1,5 @@
-diff --git a/concurrent_pmdk/src/btree.h b/concurrent_pmdk/src/btree.h
-index 1c96854..dca95f7 100644
---- a/concurrent_pmdk/src/btree.h
-+++ b/concurrent_pmdk/src/btree.h
-@@ -39,6 +39,7 @@ class page;
- POBJ_LAYOUT_BEGIN(btree);
- POBJ_LAYOUT_ROOT(btree, btree);
- POBJ_LAYOUT_TOID(btree, page);
-+POBJ_LAYOUT_TOID(btree, PMEMrwlock);
- POBJ_LAYOUT_END(btree);
- 
- using entry_key_t = int64_t;
-@@ -78,19 +79,14 @@ private:
-   uint8_t switch_counter;   // 1 bytes
-   uint8_t is_deleted;       // 1 bytes
-   int16_t last_index;       // 2 bytes
--  pthread_rwlock_t *rwlock; // 8 bytes
--  char dummy[8];            // 8 bytes
-+  TOID(PMEMrwlock) rwlock;  // 16 bytes
- 
-   friend class page;
-   friend class btree;
- 
- public:
--  void constructor() {
--    rwlock = new pthread_rwlock_t;
--    if (pthread_rwlock_init(rwlock, NULL)) {
--      perror("lock init fail");
--      exit(1);
--    }
-+  void constructor(PMEMobjpool *pop) {
-+    POBJ_ZNEW(pop, &rwlock, PMEMrwlock);
- 
-     leftmost_ptr = NULL;
-     TOID_ASSIGN(sibling_ptr, pmemobj_oid(this));
-@@ -101,8 +97,7 @@ public:
-   }
- 
-   ~header() {
--    pthread_rwlock_destroy(rwlock);
--    delete rwlock;
-+    POBJ_FREE(&rwlock);
-   }
- };
- 
-@@ -132,8 +127,8 @@ private:
- public:
-   friend class btree;
- 
--  void constructor(uint32_t level = 0) {
--    hdr.constructor();
-+  void constructor(PMEMobjpool *pop, uint32_t level = 0) {
-+    hdr.constructor(pop);
-     for (int i = 0; i < cardinality; i++) {
-       records[i].key = LONG_MAX;
-       records[i].ptr = NULL;
-@@ -146,7 +141,7 @@ public:
-   // this is called when tree grows
-   void constructor(PMEMobjpool *pop, page *left, entry_key_t key, page *right,
-                    uint32_t level = 0) {
--    hdr.constructor();
-+    hdr.constructor(pop);
-     for (int i = 0; i < cardinality; i++) {
-       records[i].key = LONG_MAX;
-       records[i].ptr = NULL;
-@@ -229,11 +224,11 @@ public:
- 
-   bool remove(btree *bt, entry_key_t key, bool only_rebalance = false,
-               bool with_lock = true) {
--    pthread_rwlock_wrlock(hdr.rwlock);
-+    pmemobj_rwlock_wrlock(bt->pop, D_RW(hdr.rwlock));
- 
-     bool ret = remove_key(bt->pop, key);
- 
--    pthread_rwlock_unlock(hdr.rwlock);
-+    pmemobj_rwlock_unlock(bt->pop, D_RW(hdr.rwlock));
- 
-     return ret;
-   }
-@@ -249,11 +244,11 @@ public:
-   bool remove_rebalancing(btree *bt, entry_key_t key,
-                           bool only_rebalance = false, bool with_lock = true) {
-     if (with_lock) {
--      pthread_rwlock_wrlock(hdr.rwlock);
-+      pmemobj_rwlock_wrlock(bt->pop, D_RW(hdr.rwlock));
-     }
-     if (hdr.is_deleted) {
-       if (with_lock) {
--        pthread_rwlock_unlock(hdr.rwlock);
-+        pmemobj_rwlock_unlock(bt->pop, D_RW(hdr.rwlock));
-       }
-       return false;
-     }
-@@ -276,7 +271,7 @@ public:
-         bool ret = remove_key(bt->pop, key);
- 
-         if (with_lock) {
--          pthread_rwlock_unlock(hdr.rwlock);
-+          pmemobj_rwlock_unlock(bt->pop, D_RW(hdr.rwlock));
-         }
-         return true;
-       }
-@@ -292,7 +287,7 @@ public:
- 
-       if (!should_rebalance) {
-         if (with_lock) {
--          pthread_rwlock_unlock(hdr.rwlock);
-+          pmemobj_rwlock_unlock(bt->pop, D_RW(hdr.rwlock));
-         }
-         return (hdr.leftmost_ptr == NULL) ? ret : true;
-       }
-@@ -309,33 +304,33 @@ public:
- 
-     if (is_leftmost_node) {
-       if (with_lock) {
--        pthread_rwlock_unlock(hdr.rwlock);
-+        pmemobj_rwlock_unlock(bt->pop, D_RW(hdr.rwlock));
-       }
- 
-       if (!with_lock) {
--        pthread_rwlock_wrlock(D_RW(hdr.sibling_ptr)->hdr.rwlock);
-+        pmemobj_rwlock_wrlock(bt->pop, D_RW(D_RW(hdr.sibling_ptr)->hdr.rwlock));
-       }
- 
-       D_RW(hdr.sibling_ptr)
-           ->remove(bt, D_RW(hdr.sibling_ptr)->records[0].key, true, with_lock);
- 
-       if (!with_lock) {
--        pthread_rwlock_unlock(D_RW(hdr.sibling_ptr)->hdr.rwlock);
-+        pmemobj_rwlock_unlock(bt->pop, D_RW(D_RW(hdr.sibling_ptr)->hdr.rwlock));
-       }
-       return true;
-     }
- 
-     if (with_lock) {
--      pthread_rwlock_wrlock(D_RW(left_sibling)->hdr.rwlock);
-+      pmemobj_rwlock_wrlock(bt->pop, D_RW(D_RW(left_sibling)->hdr.rwlock));
-     }
- 
-     while (D_RO(left_sibling)->hdr.sibling_ptr.oid.off !=
-            pmemobj_oid(this).off) {
-       if (with_lock) {
-         uint64_t t = D_RO(left_sibling)->hdr.sibling_ptr.oid.off;
--        pthread_rwlock_unlock(D_RW(left_sibling)->hdr.rwlock);
-+        pmemobj_rwlock_unlock(bt->pop, D_RW(D_RW(left_sibling)->hdr.rwlock));
-         left_sibling.oid.off = t;
--        pthread_rwlock_wrlock(D_RW(left_sibling)->hdr.rwlock);
-+        pmemobj_rwlock_wrlock(bt->pop, D_RW(D_RW(left_sibling)->hdr.rwlock));
-       } else
-         left_sibling = D_RO(left_sibling)->hdr.sibling_ptr;
-     }
-@@ -410,8 +405,8 @@ public:
- 
-         TOID(page) new_sibling;
-         POBJ_NEW(bt->pop, &new_sibling, page, NULL, NULL);
--        D_RW(new_sibling)->constructor(hdr.level);
--        pthread_rwlock_wrlock(D_RW(new_sibling)->hdr.rwlock);
-+        D_RW(new_sibling)->constructor(bt->pop, hdr.level);
-+        pmemobj_rwlock_wrlock(bt->pop, D_RW(D_RW(new_sibling)->hdr.rwlock));
-         D_RW(new_sibling)->hdr.sibling_ptr = hdr.sibling_ptr;
- 
-         int num_dist_entries = num_entries - m;
-@@ -476,7 +471,7 @@ public:
-                                     (char *)new_sibling.oid.off, hdr.level + 1);
-         }
- 
--        pthread_rwlock_unlock(D_RW(new_sibling)->hdr.rwlock);
-+        pmemobj_rwlock_unlock(bt->pop, D_RW(D_RW(new_sibling)->hdr.rwlock));
-       }
-     } else {
-       hdr.is_deleted = 1;
-@@ -499,8 +494,8 @@ public:
-     }
- 
-     if (with_lock) {
--      pthread_rwlock_unlock(D_RW(left_sibling)->hdr.rwlock);
--      pthread_rwlock_unlock(hdr.rwlock);
-+      pmemobj_rwlock_unlock(bt->pop, D_RW(D_RW(left_sibling)->hdr.rwlock));
-+      pmemobj_rwlock_unlock(bt->pop, D_RW(hdr.rwlock));
-     }
- 
-     return true;
-@@ -585,11 +580,11 @@ public:
-   page *store(btree *bt, char *left, entry_key_t key, char *right, bool flush,
-               bool with_lock, page *invalid_sibling = NULL) {
-     if (with_lock) {
--      pthread_rwlock_wrlock(hdr.rwlock);
-+      pmemobj_rwlock_wrlock(bt->pop, D_RW(hdr.rwlock));
-     }
-     if (hdr.is_deleted) {
-       if (with_lock) {
--        pthread_rwlock_unlock(hdr.rwlock);
-+        pmemobj_rwlock_unlock(bt->pop, D_RW(hdr.rwlock));
-       }
- 
-       return NULL;
-@@ -601,7 +596,7 @@ public:
-       // Compare this key with the first key of the sibling
-       if (key > D_RO(hdr.sibling_ptr)->records[0].key) {
-         if (with_lock) {
--          pthread_rwlock_unlock(hdr.rwlock);
-+          pmemobj_rwlock_unlock(bt->pop, D_RW(hdr.rwlock));
-         }
- 
-         return D_RW(hdr.sibling_ptr)
-@@ -616,7 +611,7 @@ public:
-       insert_key(bt->pop, key, right, &num_entries, flush);
- 
-       if (with_lock) {
--        pthread_rwlock_unlock(hdr.rwlock);
-+        pmemobj_rwlock_unlock(bt->pop, D_RW(hdr.rwlock));
-       }
- 
-       return (page *)pmemobj_oid(this).off;
-@@ -625,7 +620,7 @@ public:
-       // create a new node
-       TOID(page) sibling;
-       POBJ_NEW(bt->pop, &sibling, page, NULL, NULL);
--      D_RW(sibling)->constructor(hdr.level);
-+      D_RW(sibling)->constructor(bt->pop, hdr.level);
-       page *sibling_ptr = D_RW(sibling);
-       register int m = (int)ceil(num_entries / 2);
-       entry_key_t split_key = records[m].key;
-@@ -685,11 +680,11 @@ public:
-         bt->setNewRoot(new_root);
- 
-         if (with_lock) {
--          pthread_rwlock_unlock(hdr.rwlock); // Unlock the write lock
-+          pmemobj_rwlock_unlock(bt->pop, D_RW(hdr.rwlock)); // Unlock the write lock
-         }
-       } else {
-         if (with_lock) {
--          pthread_rwlock_unlock(hdr.rwlock); // Unlock the write lock
-+          pmemobj_rwlock_unlock(bt->pop, D_RW(hdr.rwlock)); // Unlock the write lock
-         }
-         bt->btree_insert_internal(NULL, split_key, (char *)sibling.oid.off,
-                                   hdr.level + 1);
-@@ -700,14 +695,14 @@ public:
-   }
- 
-   // Search keys with linear search
--  void linear_search_range(entry_key_t min, entry_key_t max,
-+  void linear_search_range(PMEMobjpool *pop, entry_key_t min, entry_key_t max,
-                            unsigned long *buf) {
-     int i, off = 0;
-     uint8_t previous_switch_counter;
-     page *current = this;
- 
-     while (current) {
--      pthread_rwlock_rdlock(current->hdr.rwlock);
-+      pmemobj_rwlock_rdlock(pop, D_RW(current->hdr.rwlock));
-       int old_off = off;
-       do {
-         previous_switch_counter = current->hdr.switch_counter;
-@@ -727,7 +722,7 @@ public:
-                 }
-               }
-             } else {
--              pthread_rwlock_unlock(current->hdr.rwlock);
-+              pmemobj_rwlock_unlock(pop, D_RW(current->hdr.rwlock));
-               return;
-             }
-           }
-@@ -743,7 +738,7 @@ public:
-                   }
-                 }
-               } else {
--                pthread_rwlock_unlock(current->hdr.rwlock);
-+                pmemobj_rwlock_unlock(pop, D_RW(current->hdr.rwlock));
-                 return;
-               }
-             }
-@@ -760,7 +755,7 @@ public:
-                   }
-                 }
-               } else {
--                pthread_rwlock_unlock(current->hdr.rwlock);
-+                pmemobj_rwlock_unlock(pop, D_RW(current->hdr.rwlock));
-                 return;
-               }
-             }
-@@ -776,19 +771,19 @@ public:
-                 }
-               }
-             } else {
--              pthread_rwlock_unlock(current->hdr.rwlock);
-+              pmemobj_rwlock_unlock(pop, D_RW(current->hdr.rwlock));
-               return;
-             }
-           }
-         }
-       } while (previous_switch_counter != current->hdr.switch_counter);
- 
--      pthread_rwlock_unlock(current->hdr.rwlock);
-+      pmemobj_rwlock_unlock(pop, D_RW(current->hdr.rwlock));
-       current = D_RW(current->hdr.sibling_ptr);
-     }
-   }
- 
--  char *linear_search(entry_key_t key) {
-+  char *linear_search(PMEMobjpool *pop, entry_key_t key) {
-     int i = 1;
-     uint8_t previous_switch_counter;
-     char *ret = NULL;
-@@ -796,7 +791,7 @@ public:
-     entry_key_t k;
- 
-     if (hdr.leftmost_ptr == NULL) {      // Search a leaf node
--      pthread_rwlock_rdlock(hdr.rwlock); // Lock Read Lock
-+      pmemobj_rwlock_rdlock(pop, D_RW(hdr.rwlock)); // Lock Read Lock
-       do {
-         previous_switch_counter = hdr.switch_counter;
-         ret = NULL;
-@@ -848,17 +843,17 @@ public:
-       } while (hdr.switch_counter != previous_switch_counter);
- 
-       if (ret) {
--        pthread_rwlock_unlock(hdr.rwlock);
-+        pmemobj_rwlock_unlock(pop, D_RW(hdr.rwlock));
-         return ret;
-       }
- 
-       if ((t = (char *)hdr.sibling_ptr.oid.off) &&
-           key >= D_RW(hdr.sibling_ptr)->records[0].key) {
--        pthread_rwlock_unlock(hdr.rwlock);
-+        pmemobj_rwlock_unlock(pop, D_RW(hdr.rwlock));
-         return t;
-       }
- 
--      pthread_rwlock_unlock(hdr.rwlock);
-+      pmemobj_rwlock_unlock(pop, D_RW(hdr.rwlock));
-       return NULL;
-     } else { // internal node
-       do {
-@@ -922,9 +917,9 @@ public:
-   // print a node
-   void print() {
-     if (hdr.leftmost_ptr == NULL)
--      printf("[%d] leaf %x \n", this->hdr.level, pmemobj_oid(this).off);
-+      printf("[%d] leaf %lx \n", this->hdr.level, pmemobj_oid(this).off);
-     else
--      printf("[%d] internal %x \n", this->hdr.level, pmemobj_oid(this).off);
-+      printf("[%d] internal %lx \n", this->hdr.level, pmemobj_oid(this).off);
-     printf("last_index: %d\n", hdr.last_index);
-     printf("switch_counter: %d\n", hdr.switch_counter);
-     printf("search direction: ");
-@@ -934,12 +929,12 @@ public:
-       printf("<-\n");
- 
-     if (hdr.leftmost_ptr != NULL)
--      printf("%x ", hdr.leftmost_ptr);
-+      printf("%p ", hdr.leftmost_ptr);
- 
-     for (int i = 0; records[i].ptr != NULL; ++i)
--      printf("%ld,%x ", records[i].key, records[i].ptr);
-+      printf("%ld,%p ", records[i].key, records[i].ptr);
- 
--    printf("%x ", hdr.sibling_ptr.oid.off);
-+    printf("%lx ", hdr.sibling_ptr.oid.off);
- 
-     printf("\n");
-   }
-@@ -970,7 +965,7 @@ public:
- void btree::constructor(PMEMobjpool *pool) {
-   pop = pool;
-   POBJ_NEW(pop, &root, page, NULL, NULL);
--  D_RW(root)->constructor();
-+  D_RW(root)->constructor(pop);
-   height = 1;
- }
- 
-@@ -984,11 +979,11 @@ char *btree::btree_search(entry_key_t key) {
-   TOID(page) p = root;
- 
-   while (D_RO(p)->hdr.leftmost_ptr != NULL) {
--    p.oid.off = (uint64_t)D_RW(p)->linear_search(key);
-+    p.oid.off = (uint64_t)D_RW(p)->linear_search(pop, key);
-   }
- 
-   uint64_t t;
--  while ((t = (uint64_t)D_RW(p)->linear_search(key)) ==
-+  while ((t = (uint64_t)D_RW(p)->linear_search(pop, key)) ==
-          D_RO(p)->hdr.sibling_ptr.oid.off) {
-     p.oid.off = t;
-     if (!t) {
-@@ -997,7 +992,7 @@ char *btree::btree_search(entry_key_t key) {
-   }
- 
-   if (!t) {
--    printf("NOT FOUND %lu, t = %x\n", key, t);
-+    printf("NOT FOUND %lu, t = %lx\n", key, t);
-     return NULL;
-   }
- 
-@@ -1009,7 +1004,7 @@ void btree::btree_insert(entry_key_t key, char *right) {
-   TOID(page) p = root;
- 
-   while (D_RO(p)->hdr.leftmost_ptr != NULL) {
--    p.oid.off = (uint64_t)D_RW(p)->linear_search(key);
-+    p.oid.off = (uint64_t)D_RW(p)->linear_search(pop, key);
-   }
- 
-   if (!D_RW(p)->store(this, NULL, key, right, true, true)) { // store
-@@ -1026,7 +1021,7 @@ void btree::btree_insert_internal(char *left, entry_key_t key, char *right,
-   TOID(page) p = root;
- 
-   while (D_RO(p)->hdr.level > level)
--    p.oid.off = (uint64_t)D_RW(p)->linear_search(key);
-+    p.oid.off = (uint64_t)D_RW(p)->linear_search(pop, key);
- 
-   if (!D_RW(p)->store(this, NULL, key, right, true, true)) {
-     btree_insert_internal(left, key, right, level);
-@@ -1037,11 +1032,11 @@ void btree::btree_delete(entry_key_t key) {
-   TOID(page) p = root;
- 
-   while (D_RO(p)->hdr.leftmost_ptr != NULL) {
--    p.oid.off = (uint64_t)D_RW(p)->linear_search(key);
-+    p.oid.off = (uint64_t)D_RW(p)->linear_search(pop, key);
-   }
- 
-   uint64_t t;
--  while ((t = (uint64_t)(D_RW(p)->linear_search(key))) ==
-+  while ((t = (uint64_t)(D_RW(p)->linear_search(pop, key))) ==
-          D_RW(p)->hdr.sibling_ptr.oid.off) {
-     p.oid.off = t;
-     if (!t)
-@@ -1066,14 +1061,14 @@ void btree::btree_delete_internal(entry_key_t key, char *ptr, uint32_t level,
-   TOID(page) p = root;
- 
-   while (D_RW(p)->hdr.level > level) {
--    p.oid.off = (uint64_t)D_RW(p)->linear_search(key);
-+    p.oid.off = (uint64_t)D_RW(p)->linear_search(pop, key);
-   }
- 
--  pthread_rwlock_wrlock(D_RW(p)->hdr.rwlock);
-+  pmemobj_rwlock_wrlock(pop, D_RW(D_RW(p)->hdr.rwlock));
- 
-   if ((char *)D_RO(p)->hdr.leftmost_ptr == ptr) {
-     *is_leftmost_node = true;
--    pthread_rwlock_unlock(D_RW(p)->hdr.rwlock);
-+    pmemobj_rwlock_unlock(pop, D_RW(D_RW(p)->hdr.rwlock));
-     return;
-   }
- 
-@@ -1099,7 +1094,7 @@ void btree::btree_delete_internal(entry_key_t key, char *ptr, uint32_t level,
-     }
-   }
- 
--  pthread_rwlock_unlock(D_RW(p)->hdr.rwlock);
-+  pmemobj_rwlock_unlock(pop, D_RW(D_RW(p)->hdr.rwlock));
- }
- 
- // Function to search keys from "min" to "max"
-@@ -1110,10 +1105,10 @@ void btree::btree_search_range(entry_key_t min, entry_key_t max,
-   while (p.oid.off != 0) {
-     if (D_RO(p)->hdr.leftmost_ptr != NULL) {
-       // The current page is internal
--      p.oid.off = (uint64_t)D_RW(p)->linear_search(min);
-+      p.oid.off = (uint64_t)D_RW(p)->linear_search(pop, min);
-     } else {
-       // Found a leaf
--      D_RW(p)->linear_search_range(min, max, buf);
-+      D_RW(p)->linear_search_range(pop, min, max, buf);
- 
-       break;
-     }
-@@ -1124,7 +1119,7 @@ void btree::printAll() {
-   pthread_mutex_lock(&print_mtx);
-   int total_keys = 0;
-   TOID(page) leftmost = root;
--  printf("root: %x\n", root.oid.off);
-+  printf("root: %lx\n", root.oid.off);
-   if (root.oid.off) {
-     do {
-       TOID(page) sibling = leftmost;
 diff --git a/concurrent_pmdk/src/test.cpp b/concurrent_pmdk/src/test.cpp
-index 12efd0b..e01eb3a 100644
+index 12efd0b..81e85fd 100644
 --- a/concurrent_pmdk/src/test.cpp
 +++ b/concurrent_pmdk/src/test.cpp
 @@ -1,5 +1,69 @@
@@ -530,7 +55,7 @@ index 12efd0b..e01eb3a 100644
 +              input >> key;
 +              input.ignore(1);
 +            }
-+
++            
 +	          if(input.eof())
 +		          break;
 +            if(op_c == 'i' || op_c == 'u') {
@@ -563,8 +88,12 @@ index 12efd0b..e01eb3a 100644
  }
  
  // MAIN
-@@ -27,16 +91,15 @@ int main(int argc, char **argv) {
-   int c;
+@@ -24,19 +88,18 @@ int main(int argc, char **argv) {
+   char *input_path = (char *)std::string("../sample_input.txt").data();
+   char *persistent_path;
+ 
+-  int c;
++  int c;  
    while ((c = getopt(argc, argv, "n:w:t:i:p:")) != -1) {
      switch (c) {
 -    case 'n':
@@ -582,15 +111,6 @@ index 12efd0b..e01eb3a 100644
      default:
        break;
      }
-@@ -47,7 +110,7 @@ int main(int argc, char **argv) {
-   PMEMobjpool *pop;
- 
-   if (file_exists(persistent_path) != 0) {
--    pop = pmemobj_create(persistent_path, "btree", 8000000000,
-+    pop = pmemobj_create(persistent_path, "btree", 80000000,
-                          0666); // make 1GB memory pool
-     bt = POBJ_ROOT(pop, btree);
-     D_RW(bt)->constructor(pop);
 @@ -58,142 +121,50 @@ int main(int argc, char **argv) {
  
    struct timespec start, end, tmp;
@@ -619,11 +139,12 @@ index 12efd0b..e01eb3a 100644
 -    D_RW(bt)->btree_insert(keys[i], (char *)keys[i]);
 -  }
 -  cout << "Warm-up!" << endl;
- 
+-
 -  clock_gettime(CLOCK_MONOTONIC, &end);
 -  long long elapsedTime =
 -      (end.tv_sec - start.tv_sec) * 1000000000 + (end.tv_nsec - start.tv_nsec);
 -  clear_cache();
++  
 +  Workload workload(input_path);
 +  numData = workload.ops.size();
 +  std::cerr << "Workload: " << numData << " ops" << std::endl;
@@ -698,7 +219,6 @@ index 12efd0b..e01eb3a 100644
      auto f = async(launch::async,
 -                   [&bt, &keys, &half_num_data](int from, int to) {
 +                   [&bt, &workload](int from, int to) {
-+                     unsigned long int buf[1000];
                       for (int i = from; i < to; ++i) {
 -                       int sidx = i - half_num_data;
 -
@@ -739,6 +259,7 @@ index 12efd0b..e01eb3a 100644
 -                         break;
 -                       }
 +                       Operation & op = workload.ops[i];
++                       unsigned long int x;
 +
 +                       switch(op.type) {
 +                        case OperationType::INSERT:
@@ -754,12 +275,12 @@ index 12efd0b..e01eb3a 100644
 +                          D_RW(bt)->btree_delete(op.key);
 +                          break;
 +                        case OperationType::RANGE:
-+                          D_RW(bt)->btree_search_range(op.key, std::min(1000UL, op.value), buf);
++                          D_RW(bt)->btree_search_range(op.key, op.value, &x);
 +                          break;
 +                        case OperationType::PRINT:
 +                          D_RW(bt)->printAll();
 +                          break;
-+                        }
++                        }   
                       }
                     },
                     from, to);

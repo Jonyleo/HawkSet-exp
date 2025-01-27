@@ -18,6 +18,6 @@ mounts="-v $HAWKSET_POOL:/mnt/pmem \
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         docker run --hostname=$1 --privileged -it -e "TERM=xterm-color" \
-                   --workdir /root/runners ${mounts} $1:hawkset-$HAWKSET_VERSION
+                   --workdir /root/runners ${mounts} $1:$HAWKSET_VERSION
 fi
 
