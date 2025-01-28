@@ -14,4 +14,4 @@ mkdir $HAWKSET_POOL/pmem1 -p
 export HAWKSET_MOUNTS="-v $HAWKSET_POOL:/mnt/pmem \
         -v $HAWKSET_POOL/pmem0:/mnt/pmem0 \
         -v $HAWKSET_POOL/pmem1:/mnt/pmem1 \
-        -v `pwd`/output:/root/output"
+        -v $HAWKSET_ROOT/output:/root/output"
