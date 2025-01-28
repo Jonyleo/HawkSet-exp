@@ -1,4 +1,4 @@
-ARG HAWKSET_VERSION
+ARG HAWKSET_VERSION=latest
 FROM hawkset-exp:${HAWKSET_VERSION}
 
 RUN apt update && apt install -y build-essential autoconf automake libpcre3-dev libevent-dev pkg-config zlib1g-dev libssl-dev libevent-dev libseccomp-dev python3-pip

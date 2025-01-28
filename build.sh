@@ -10,7 +10,7 @@ docker build . -t hawkset-exp:$HAWKSET_VERSION --build-arg HAWKSET_VERSION=$HAWK
 
 echo Building Workloads
 cd applications
-#./full_build.sh
+./full_build.sh
 
 # echo Building PMRace
 # docker build  . -f Dockerfile.pmrace -t pmrace

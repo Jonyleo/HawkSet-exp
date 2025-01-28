@@ -26,4 +26,3 @@ esac
 
 DOCKER_PROFILE=$DOCKER_PROFILE:$HAWKSET_VERSION
 docker run --workdir /root/runners ${mounts} $DOCKER_PROFILE timeout 10m ./profile.sh $2 $1 $3
-unset DOCKER_PROFILE

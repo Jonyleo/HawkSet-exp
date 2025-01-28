@@ -16,4 +16,4 @@ LD_PRELOAD=${TOOL_ROOT}/apex/build_debug/pmdk/src/PMDK/src/debug/libpmemobj.so.1
 	${TOOL_ROOT}/apex/build_debug/benchmark \
 	-t 8 \
 	-i ${TOOL_ROOT}/workloads/ycsb_$WORKLOAD.txt \
-	-k ${TOOL_ROOT}/workloads/ycsb-200M.bin.data
+	-k ${TOOL_ROOT}/ycsb-200M.bin

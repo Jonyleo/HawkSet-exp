@@ -1,8 +1,5 @@
 This document outlines the steps necessary to replicate the experiments present in the paper "HawkSet: Automatic, Application-Agnostic, and Efficient Concurrent PM Bug Detection", submitted to Eurosys 2025.
 
-# Notes: TODO
-
-
 # Overview
 
 - 1. Requirements and Setup
@@ -118,7 +115,7 @@ To generate Table 4, run the following command:
 ~/HawkSet-exp/artifact_evaluation/$ python3 disp_irh_comparison.py ../output/reports/
 ```
 
-Note that the "Manual" Section is not provided. This is not trivially automated, as discussed in the paper, and as such, does not provide much value to the artifact evaluation.
+Note that the "Manual" Section is not displayed. This is not trivially automated, as discussed in the paper, and as such, does not provide much value to the artifact evaluation.
 
 
 # 7. Experiment 4 (Table 3): Comparison with PMRace (~6 hours) [WIP]
