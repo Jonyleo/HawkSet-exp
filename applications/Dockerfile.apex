@@ -3,7 +3,7 @@ FROM hawkset-exp:${HAWKSET_VERSION}
 
 RUN apt update
 RUN apt install -y autoconf automake build-essential cmake \
-    libnuma-dev libtbb-dev pip
+    libnuma-dev libtbb-dev 
 
 RUN python3 -m pip install gdown
 

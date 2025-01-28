@@ -2,6 +2,8 @@
 
 source config.sh
 
+set -e
+
 echo Building HawkSet
 cd HawkSet
 docker build . -t hawkset:$HAWKSET_VERSION --build-arg PMDK_VERSION=tags/1.12.1

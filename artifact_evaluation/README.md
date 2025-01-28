@@ -75,7 +75,7 @@ Breakdown of building time (assuming a fresh start)
 
 To ensure everything is working properly, without waiting for long experiments, follow these steps to perform the analysis for one of the target applications - Fast-Fair.
 
-- Analysing Fast-Fair under HawkSet (~5 minutes)
+### Analysing Fast-Fair under HawkSet (~5 minutes)
 
 ```
 ~/HawkSet-exp/$ mkdir output
@@ -83,25 +83,38 @@ To ensure everything is working properly, without waiting for long experiments, 
 ~/HawkSet-exp/artifact_evaluation/$ ./analyze_application.sh ../output/kickthetires ffair
 ```
 
-- Displaying the bugs detected in Fast-Fair 
+### Generating Figures and Tables
+
+- Launch the hawkset-exp docker container which is ready for generating figures and tables
 
 ```
-~/HawkSet-exp/artifact_evaluation/$ python3 ./disp_bug_table.py ../output/kickthetires
+~/HawkSet-exp/artifact_evaluation/$ cd ..
+~/HawkSet-exp/ ./launch.sh hawkset-exp
+root@hawkset-exp:~# cd artifact_evaluation
 ```
 
-- Graphing HawkSet's metrics when evaluating Fast-Fair (memory and time elapsed)
+- (Table 2): Persistency-induced Races  
 
 ```
-~/HawkSet-exp/artifact_evaluation/$ python3 ./gen_graphs.py ../output/kickthetires ../output/graphs
+root@hawkset-exp:~/artifact_evaluation# python3 disp_bug_table.py ../output/kickthetires
+```
+
+- (Figure 6) HawkSet's Metrics (memory and time elapsed)
+
+```
+root@hawkset-exp:~/artifact_evaluation# python3 gen_graphs.py ../output/kickthetires ../output/graphs
 ```
 
 Note: If you are using a remote machine provided by us, you can extract the images for vieweing via scp, or mount the machine via sftp.
 
-- Displaying the impact of the Initialization Removal Heuristic
+- (Table 4) Initialization Removal Heuristic
 
 ```
-~/HawkSet-exp/artifact_evaluation/$ python3 disp_irh_comparison.py ../output/kickthetires
+root@hawkset-exp:~/artifact_evaluation# python3 disp_irh_comparison.py ../output/kickthetires
 ```
+
+- Exit the container and proceed to the full evaluation
+
 
 - TODO. Kick the tires for PMRace comparison. (This might not be possible)
 
@@ -113,10 +126,18 @@ First, analyse all applications under HawkSet (this should take 2.5 hours).
 ~/HawkSet-exp/artifact_evaluation/$ ./analyze_all_applications.sh
 ```
 
-To output the detected bugs, similarly to Table 2, run the following coomand:
+Next, launch the hawkset-exp docker container which is ready for generating figures and tables
 
 ```
-~/HawkSet-exp/artifact_evaluation/$ python3 ./disp_bug_table.py ../output/reports/
+~/HawkSet-exp/artifact_evaluation/$ cd ..
+~/HawkSet-exp/$ ./launch.sh hawkset-exp
+root@hawkset-exp:~# cd artifact_evaluation
+```
+
+To output the detected bugs, similarly to Table 2, run the following command:
+
+```
+root@hawkset-exp:~/artifact_evaluation# python3 disp_bug_table.py ../output/reports/
 ```
 
 # 5. Experiment 2 (Figure 6): Breakdown of HawkSet's metrics
@@ -124,7 +145,7 @@ To output the detected bugs, similarly to Table 2, run the following coomand:
 To generate the graphics seen in Figure 6, run the following command:
 
 ```
-~/HawkSet-exp/artifact_evaluation/$ python3 ./gen_graphs.py ../output/reports/ ../output/graphs 
+root@hawkset-exp:~/artifact_evaluation# python3 gen_graphs.py ../output/reports/ ../output/graphs 
 ```
 
 To view them, you can mount the remote machine via sftp connection, or use scp to copy the files from the remote machine to your local machine.
@@ -134,7 +155,7 @@ To view them, you can mount the remote machine via sftp connection, or use scp t
 To generate Table 4, run the following command:
 
 ```
-~/HawkSet-exp/artifact_evaluation/$ python3 disp_irh_comparison.py ../output/reports/
+root@hawkset-exp:~/artifact_evaluation# python3 disp_irh_comparison.py ../output/reports/
 ```
 
 Note that the "Manual" Section is not displayed. This is not trivially automated, as discussed in the paper, and as such, does not provide much value to the artifact evaluation.
@@ -154,5 +175,5 @@ Note: This experiment takes a long time, arround 6 hours. We suggest using tmux 
 When the experiment is completed, run the following command to display the output in a paper-like manner
 
 ```
-~/HawkSet-exp/artifact_evaluation/$ python3 ./disp_pmrace_comparison.py fast_fair ../pmrace_results/ ../output/pmrace_comparison
+root@hawkset-exp:~/artifact_evaluation# python3 disp_pmrace_comparison.py fast_fair ../pmrace_results/ ../output/pmrace_comparison
 ```
