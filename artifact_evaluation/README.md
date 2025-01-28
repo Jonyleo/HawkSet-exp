@@ -2,13 +2,13 @@ This document outlines the steps necessary to replicate the experiments present 
 
 # Overview
 
-- 1. Requirements and Setup
-- 2. Building HawkSet, Workloads and PMRace
-- 3. Kick-the-tires Evaluation
-- 4. Experiment 1 (Table 2): Detecting Persistency-induced Races
-- 5. Experiment 2 (Figure 6): Breakdown of HawkSet's metrics
-- 6. Experiment 3 (Table 4): Breakdown of all reports 
-- 7. Experiment 4 (Table 3): Comparison with PMRace
+1. Requirements and Setup
+2. Building HawkSet, Workloads and PMRace
+3. Kick-the-tires Evaluation
+4. Experiment 1 (Table 2): Detecting Persistency-induced Races
+5. Experiment 2 (Figure 6): Breakdown of HawkSet's metrics
+6. Experiment 3 (Table 4): Breakdown of all reports 
+7. Experiment 4 (Table 3): Comparison with PMRace
 
 # 1. Requirements and Setup
 
@@ -16,10 +16,6 @@ This document outlines the steps necessary to replicate the experiments present 
 HawkSet was built and tested in Ubuntu 22.04.5 LTS and requires Docker (tested for version 27.5.0), if you are using a provided machine, the environment has been setup already.
 
 Before starting the evaluation:
-
-- Connect to the remote machine provided
-
-TODO
 
 - Clone the repository https://github.com/Jonyleo/HawkSet-exp
 
@@ -34,13 +30,39 @@ TODO
 ~/HawkSet-exp/$ git submodule update --init
 ```
 
+- [OPTIONAL] Setting up PM.
+
+HawkSet is able to analyse applications without using real or emulated PM, and we have found that this has a negligible impact in the results outlined in the paper.
+However, to run HawkSet on real PM, or emulated PM, follow these instructions.
+
+*Note*: Whichever option is used, be sure to edit the HawkSet-exp/config.sh file, setting the PM_PATH environment variable to `/mnt/pmem0`
+
+#### Setting up Persistent Memory
+
+Assuming the device's name is `/dev/pmem0`:
+
+```
+sudo mkdir /mnt/pmem0
+sudo mkfs.ext4 /dev/pmem0
+sudo mount -t ext4 -o dax /dev/pmem0 /mnt/pmem0
+sudo chmod -R 777 /mnt/pmem0
+``` 
+
+#### Emulating Persistent Memory using tmpfs
+
+```
+sudo mkdir /mnt/pmem0
+sudo mount -t tmpfs -o rw,size=50G tmpfs /mnt/pmem0
+sudo chmod -R 777 /mnt/pmem0
+```
+
 # 2. Building HawkSet, Workloads and PMRace
 
 The following command builds every necessary artifact required for the evaluation. See below for time estimations.
 If you are running the artifact evaluation on the provided machine, the containers are already built, and you should skip this step.
 
 ```
-~/$ ./build.sh 
+~/HawkSet-exp/$ ./build.sh 
 ```
 
 Breakdown of building time (assuming a fresh start)

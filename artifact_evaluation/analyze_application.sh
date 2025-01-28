@@ -1,8 +1,6 @@
 #!/bin/bash
 
-source setup.sh
-
-set +x
+source ../config.sh
 
 HAWKSET_POOL=$PM_PATH/HawkSet
 
