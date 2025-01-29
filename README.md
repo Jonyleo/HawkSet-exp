@@ -10,7 +10,7 @@ HawkSet-exp/HawkSet/ - HawkSet source code submodule
 HawkSet-exp/patches/ - Patch files for some applications
 HawkSet-exp/pmrace-vagrant/ - PMRace source code and evaluation submodule
 HawkSet-exp/runners/ - Helper scripts to analyze each application
-HawkSet-exp/build.sh - Builds all requirements
+HawkSet-exp/build_hawkset.sh - Builds all requirements
 HawkSet-exp/config.sh - Contains environment variables used in other scripts
 HawkSet-exp/launch.sh - Launches a specific application container
 

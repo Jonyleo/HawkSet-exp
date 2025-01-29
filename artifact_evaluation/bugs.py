@@ -66,7 +66,7 @@ bug_patterns = {
 
 10: [(False, "pmemcached", "memcached.c:4292", "memcached.c:2805"),],
 
-11: [(False, "pmemcached", "memcached.c:4294", "memcached.c:2805"),],
+11: [(False, "pmemcached", "memcached.c:4293", "memcached.c:2805"),],
 
 12: [(False, "pmemcached", "items.c:423", "items.c:464"),],
 

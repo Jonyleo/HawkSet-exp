@@ -58,18 +58,23 @@ sudo chmod -R 777 /mnt/pmem0
 
 # 2. Building HawkSet, Workloads and PMRace
 
-The following command builds every necessary artifact required for the evaluation. See below for time estimations.
+The following commands builds every necessary artifact required for the evaluation. See below for time estimations.
 If you are running the artifact evaluation on the provided machine, the containers are already built, and you should skip this step.
 
+### Build HawkSet and it's Workloads
+
 ```
-~/HawkSet-exp/$ ./build.sh 
+~/HawkSet-exp/$ ./build_hawkset.sh 
 ```
 
 Breakdown of building time (assuming a fresh start)
 
 - Building HawkSet (~6 minutes)
 - Building the Workloads (~15 minutes)
-- Building PMRace (~30 minutes)
+
+### Build PMRace
+
+TODO - ~1hour
 
 # 3. Kick-the-tires Evaluation - Analysing Fast-Fair
 
