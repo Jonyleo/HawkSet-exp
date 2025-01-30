@@ -5,7 +5,7 @@ if [ -z $WORKLOAD  ] ; then
 fi
 
 rm ${PM_MOUNT}/wipe -f
-
+mkdir /mnt/pmem1/lbl/ -p
 
 PM_MOUNT=/mnt/pmem1 ${TOOL_ROOT}/scripts/HawkSet \
 	${@:1} \

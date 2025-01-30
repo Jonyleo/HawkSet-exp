@@ -47,20 +47,24 @@ def display_table(results_dir):
 			continue
 
 		for run in bugs[app]:
-			if "100000-irh" in run:
+			if "100000-irh0" in run:
 				irh0 = run
+				break
+		else:
 
-		for run in bugs[app]:
-			if "10000-irh" in run:
-				irh0 = run
+			for run in bugs[app]:
+				if "10000-irh0" in run:
+					irh0 = run
+					break
 
-		for run in bugs[app]:
-			if "1000-irh" in run:
-				irh0 = run
+			else:
 
+				for run in bugs[app]:
+					if "1000-irh0" in run:
+						irh0 = run
+						break
 
 		irh1 = irh0.replace("irh0", "irh1")
-
 
 		irh0_data = count_unique_races(bugs[app][irh0])
 		irh1_data = count_unique_races(bugs[app][irh1])

@@ -11,7 +11,7 @@ def get_pmrace_data(app, results_dir):
 	seeds_with_races_nr1 = set()
 	seeds_with_races_nr2 = set()
 
-	for race in glob.glob(results_dir + os.sep + "*" + os.sep + "*" + os.sep +  "*---race.csv.parsed"):
+	for race in glob.glob(results_dir + os.sep + "*" + os.sep +  "*---race.csv.parsed.err"):
 		seed = race.split(os.sep)[-2]
 		all_seeds.add(seed)
 
@@ -23,6 +23,7 @@ def get_pmrace_data(app, results_dir):
 
 		if found_bug_pmrace(app, race, 2):
 			seeds_with_races_nr2.add(seed)
+			print(seed, race)
 
 	return len(seeds_with_races_nr1), len(seeds_with_races_nr2), len(all_seeds)
 
@@ -76,14 +77,16 @@ def avg_time_to_race(total_runs, racy, average_time):
 
 if __name__ == "__main__":
 	app = sys.argv[1]
-	pmrace_results_dir = sys.argv[2] + os.sep + app
+	pmrace_results_dir = sys.argv[2] + os.sep
 	hawkset_results_dir = sys.argv[3] + os.sep
 
 	pmrace_racy_nr1, pmrace_racy_nr2, pmrace_total = get_pmrace_data(app, pmrace_results_dir)
-	hawkset_racy_nr1, hawkset_racy_nr2, hawkset_total, hawkset_time = get_hawkset_data(app, hawkset_results_dir)
-	
-	assert pmrace_total == hawkset_total
+	#hawkset_racy_nr1, hawkset_racy_nr2, hawkset_total, hawkset_time = get_hawkset_data(app, hawkset_results_dir)
 
+	#assert pmrace_total == hawkset_total
+
+	print(pmrace_racy_nr1, pmrace_racy_nr2)
+	exit()
 	hawkset_avg_time = hawkset_time / hawkset_total
 
 	ttr_pmrace_1 = avg_time_to_race(pmrace_total, pmrace_racy_nr1, 600)

@@ -74,7 +74,11 @@ Breakdown of building time (assuming a fresh start)
 
 ### Build PMRace
 
-TODO - ~1hour
+```
+~/HawkSet-exp/$ ./build_hawkset.sh
+```
+
+This should take arround 1 hour
 
 # 3. Kick-the-tires Evaluation - Analysing Fast-Fair
 
@@ -121,7 +125,7 @@ root@hawkset-exp:~/artifact_evaluation# python3 disp_irh_comparison.py ../output
 - Exit the container and proceed to the full evaluation
 
 
-- TODO. Kick the tires for PMRace comparison. (This might not be possible)
+- TODO. Kick the tires for PMRace comparison. 
 
 # 4. Experiment 1 (Table 2): Detecting Persistency-induced Races (~2.5 Hours)
 

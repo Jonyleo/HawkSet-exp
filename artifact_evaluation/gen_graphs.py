@@ -30,6 +30,7 @@ def make_plot(x_data, dataset, y_labels, x_axis_label="", y_axis_label="", title
 
 	plt.ylim(0)
 	plt.xlim(0)
+
 	modifier = ""
 	if x_balance == 1000:
 		modifier = "K"
@@ -184,6 +185,10 @@ if __name__ == "__main__":
 	if not os.path.exists(input_path):
 		print("Invalid input path")
 		exit(-1)
+
+	import warnings
+
+	warnings.filterwarnings("ignore", message="Attempt to set non-positive .lim on a log-scaled axis")
 
 	data = parse_data(input_path, None)
 
