@@ -7,13 +7,13 @@ import math
 from bugs import found_bug_pmrace, found_bug_hawkset
 
 def get_pmrace_data(app, results_dir):
-	all_seeds = set()
 	seeds_with_races_nr1 = set()
 	seeds_with_races_nr2 = set()
 
+	n_seeds = len(glob.glob(results_dir + os.sep + "*" + os.sep))
+
 	for race in glob.glob(results_dir + os.sep + "*" + os.sep +  "*---race.csv.parsed.err"):
 		seed = race.split(os.sep)[-2]
-		all_seeds.add(seed)
 
 		if seed in seeds_with_races_nr1 and seed in seeds_with_races_nr2:
 			continue
@@ -23,15 +23,16 @@ def get_pmrace_data(app, results_dir):
 
 		if found_bug_pmrace(app, race, 2):
 			seeds_with_races_nr2.add(seed)
-			print(seed, race)
 
-	return len(seeds_with_races_nr1), len(seeds_with_races_nr2), len(all_seeds)
+	return len(seeds_with_races_nr1), len(seeds_with_races_nr2), n_seeds
 
 def get_hawkset_data(app, results_dir):
 	n_racy_seeds_nr1 = 0
 	n_racy_seeds_nr2 = 0
 	
 	bugs = parse_all(results_dir, None)
+
+	print(bugs.keys())
 
 	if app not in bugs:
 		print(f"No results found for HawkSet comparison to PMRace for {app}. Did you run the exp script?")
@@ -81,12 +82,10 @@ if __name__ == "__main__":
 	hawkset_results_dir = sys.argv[3] + os.sep
 
 	pmrace_racy_nr1, pmrace_racy_nr2, pmrace_total = get_pmrace_data(app, pmrace_results_dir)
-	#hawkset_racy_nr1, hawkset_racy_nr2, hawkset_total, hawkset_time = get_hawkset_data(app, hawkset_results_dir)
+	hawkset_racy_nr1, hawkset_racy_nr2, hawkset_total, hawkset_time = get_hawkset_data(app, hawkset_results_dir)
 
-	#assert pmrace_total == hawkset_total
+	assert pmrace_total == hawkset_total
 
-	print(pmrace_racy_nr1, pmrace_racy_nr2)
-	exit()
 	hawkset_avg_time = hawkset_time / hawkset_total
 
 	ttr_pmrace_1 = avg_time_to_race(pmrace_total, pmrace_racy_nr1, 600)
@@ -100,7 +99,7 @@ if __name__ == "__main__":
 	print(f"  PMRace |     |            |{pmrace_racy_nr1: >5} |{600.0: >10.02f}    |{ttr_pmrace_1: >15.2f}           ")
 	print(f"---------| #1  |            |--------------------------------------------")
 	print(f" HawkSet |     |            |{hawkset_racy_nr1: >5} |{hawkset_avg_time: >10.02f}    |{ttr_hawkset_1: >15.2f}           ")
-	print(f"---------------|     {hawkset_total:03}    |--------------------------------------------")
+	print(f"---------------|     {hawkset_total:^3}    |--------------------------------------------")
 	print(f"  PMRace |     |            |{pmrace_racy_nr2: >5} |{600.0: >10.02f}    |{ttr_pmrace_2: >15.2f}           ")
 	print(f"---------| #2  |            |--------------------------------------------")
 	print(f" HawkSet |     |            |{hawkset_racy_nr2: >5} |{hawkset_avg_time: >10.02f}    |{ttr_hawkset_2: >15.2f}           ")

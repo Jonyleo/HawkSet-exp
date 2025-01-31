@@ -59,7 +59,6 @@ sudo chmod -R 777 /mnt/pmem0
 # 2. Building HawkSet, Workloads and PMRace
 
 The following commands builds every necessary artifact required for the evaluation. See below for time estimations.
-If you are running the artifact evaluation on the provided machine, the containers are already built, and you should skip this step.
 
 ### Build HawkSet and it's Workloads
 
@@ -124,8 +123,26 @@ root@hawkset-exp:~/artifact_evaluation# python3 disp_irh_comparison.py ../output
 
 - Exit the container and proceed to the full evaluation
 
+### Simplified PMRace Comparison
 
-- TODO. Kick the tires for PMRace comparison. 
+Experiment 4 lastes for approximatelly 40 hours, to ensure everything is working properly, follow these steps to replicate a reduce version of the experiment.
+
+**Note**: The results of this experiment should be ignored, they do not reflect the actual performance of PMRace nor HawkSet.
+
+**Note**: If you are running the experiments docker container, exit and return to the host machine.
+
+```
+~/HawkSet-exp/artifact_evaluation/$ ./exp_pmrace_comparison.sh KTT
+```
+
+To generate a figure similar to Table 3, run the following command (disreguard the actual results, including NaNs and infs):
+
+```
+~/HawkSet-exp/artifact_evaluation/$ cd ..
+~/HawkSet-exp/ ./launch.sh hawkset-exp
+root@hawkset-exp:~# cd artifact_evaluation
+root@hawkset-exp:~/artifact_evaluation# python3 disp_pmrace_comparison.py ffair ../pmrace_results ../output/pmrace_seeds/
+```
 
 # 4. Experiment 1 (Table 2): Detecting Persistency-induced Races (~2.5 Hours)
 
@@ -170,12 +187,13 @@ root@hawkset-exp:~/artifact_evaluation# python3 disp_irh_comparison.py ../output
 Note that the "Manual" Section is not displayed. This is not trivially automated, as discussed in the paper, and as such, does not provide much value to the artifact evaluation.
 
 
-# 7. Experiment 4 (Table 3): Comparison with PMRace (~6 hours) [WIP]
+# 7. Experiment 4 (Table 3): Comparison with PMRace (~40 hours)
 
 To replicate the comparsion betwen PMRace and HawkSet, run the following commands:
 
-Note: This experiment takes a long time, arround 6 hours. We suggest using tmux to leave the experiment running the background. It is already installed in the provided machine.
+**Note**: This experiment takes a long time, arround 40 hours. We suggest using tmux to leave the experiment running the background.
 
+**Note**: If you are running the experiments docker container, exit and return to the host machine.
 
 ```
 ~/HawkSet-exp/artifact_evaluation/$ ./exp_pmrace_comparison.sh
@@ -184,5 +202,10 @@ Note: This experiment takes a long time, arround 6 hours. We suggest using tmux 
 When the experiment is completed, run the following command to display the output in a paper-like manner
 
 ```
-root@hawkset-exp:~/artifact_evaluation# python3 disp_pmrace_comparison.py fast_fair ../pmrace_results/ ../output/pmrace_comparison
+~/HawkSet-exp/artifact_evaluation/$ cd ..
+~/HawkSet-exp/$ ./launch.sh hawkset-exp
+root@hawkset-exp:~# cd artifact_evaluation
+root@hawkset-exp:~/artifact_evaluation# python3 disp_pmrace_comparison.py ffair ../pmrace_results ../output/pmrace_seeds/
 ```
+
+**Note**: Rerunning this experiment (or the Kick-the-tires (simplified) version ), will delete the previous results
