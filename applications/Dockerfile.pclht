@@ -1,0 +1,20 @@
+ARG HAWKSET_VERSION=latest
+FROM hawkset-exp:${HAWKSET_VERSION}
+
+RUN apt update
+RUN apt install -y libjemalloc-dev libtbb-dev libboost-all-dev
+
+WORKDIR $TOOL_ROOT
+RUN git clone https://github.com/utsaslab/RECIPE
+
+##### P-CLHT
+WORKDIR $TOOL_ROOT/RECIPE/P-CLHT
+RUN git checkout 70bf21c
+
+# Apply patch
+RUN git apply --ignore-space-change --ignore-whitespace $TOOL_ROOT/patches/p_clht.diff
+# Compile
+RUN mkdir build
+WORKDIR $TOOL_ROOT/RECIPE/P-CLHT/build
+RUN cmake -DCMAKE_BUILD_TYPE=Debug ..
+RUN make -j

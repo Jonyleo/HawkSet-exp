@@ -1,0 +1,302 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index c0d2ff9..401c5ce 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -53,7 +53,7 @@ configure_file(
+ )
+ 
+ # -march=native used to detect CPU flags and use corrosponding clflush instruction
+-set(CMAKE_CXX_FLAGS "-march=native -Wall -Wno-reorder -O3")
++set(CMAKE_CXX_FLAGS "-march=native -Wall -Wno-reorder -O0")
+ 
+ # Require C++17
+ set(CMAKE_CXX_STANDARD_REQUIRED on)
+@@ -68,7 +68,7 @@ if(OPENMP_FOUND)
+   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+ endif()
+ 
+-add_definitions(-DNDEBUG -DNDEBUGGING)
++#add_definitions(-DNDEBUG -DNDEBUGGING)
+ 
+ # MK for RMI
+ link_directories(${MKL_LINK_DIRECTORY})
+diff --git a/src/letree.h b/src/letree.h
+index 294293a..34193f4 100644
+--- a/src/letree.h
++++ b/src/letree.h
+@@ -13,7 +13,7 @@
+ #include "debug.h"
+ #include <pthread.h>
+ 
+-// #define MULTI_THREAD // comment this line for single thread operation
++#define MULTI_THREAD // comment this line for single thread operation
+ 
+ namespace letree
+ {
+@@ -833,6 +833,9 @@ namespace letree
+         pthread_mutex_lock(&lock_space[group_id]);
+ #endif
+         auto ret = group_space[group_id].Update(clevel_mem_, key, value);
++#ifdef MULTI_THREAD
++        pthread_mutex_unlock(&lock_space[group_id]);
++#endif
+         return ret;
+     }
+ 
+diff --git a/test/example.cc b/test/example.cc
+index 597d11a..57bccc3 100644
+--- a/test/example.cc
++++ b/test/example.cc
+@@ -7,122 +7,149 @@ using ycsbc::KvDB;
+ using namespace dbInter;
+ using namespace std;
+ 
+-void show_help(char *prog)
+-{
+-  cout << "Usage: " << prog << " [options]" << endl
+-       << endl
+-       << "  Option:" << endl
+-       << "    --load-size              LOAD_SIZE" << endl
+-       << "    --put-size               PUT_SIZE" << endl
+-       << "    --get-size               GET_SIZE" << endl
+-       << "    --help[-h]               show help" << endl;
+-}
++enum OperationType {
++    INSERT,
++    UPDATE,
++    GET,
++    DELETE,
++    RANGE,
++    PRINT
++};
++
++std::map<char, OperationType> operation_type_map = {
++    {'i', OperationType::INSERT},
++    {'u', OperationType::UPDATE},
++    {'s', OperationType::GET},
++    {'d', OperationType::DELETE},
++    {'r', OperationType::RANGE},
++    {'p', OperationType::PRINT}
++};
++
++struct Operation {
++    OperationType type;
++    uint64_t key;
++    uint64_t value;
++};
++
++struct Workload {
++    std::vector<Operation> ops;
++
++    Workload(char * filename) {
++        std::ifstream input(filename);
++
++        if(!input) {
++            std::cerr << "Error opening input file" << std::endl;
++            return;
++        }
++
++        char op_c = 'i';
++        uint64_t key = 0;
++        uint64_t value = 0;
++
++        while(!input.eof()) {
++            input >> op_c;
++            input.ignore(1);
++            if(op_c != 'p') {
++              input >> key;
++              input.ignore(1);
++            }
++
++            if(input.eof())
++              break;
++            if(op_c == 'i' || op_c == 'u') {
++                input >> value;
++                input.ignore(1);
++            }
++
++            Operation op = {operation_type_map[op_c], key, value};
++            ops.push_back(op);
++        }
++    }
++};
+ 
+-vector<uint64_t> generate_uniform_random(size_t op_num)
+-{
+-  vector<uint64_t> data;
+-  data.resize(op_num);
+-  const uint64_t ns = util::timing([&]
+-                                   {
+-                                     Random rnd(0, UINT64_MAX);
+-                                     for (size_t i = 0; i < op_num; ++i)
+-                                     {
+-                                       data[i] = rnd.Next();
+-                                     } });
+-
+-  const uint64_t ms = ns / 1e6;
+-  cout << "generate " << data.size() << " values in "
+-       << ms << " ms (" << static_cast<double>(data.size()) / 1000 / ms
+-       << " M values/s)" << endl;
+-  return data;
+-}
+ 
+ int main(int argc, char *argv[])
+ {
+-  int thread_num = 1;
+-  size_t LOAD_SIZE = 10000000;
+-  size_t PUT_SIZE = 10000000;
+-  size_t GET_SIZE = 10000000;
+-
+-  static struct option opts[] = {
+-      /* NAME               HAS_ARG            FLAG  SHORTNAME*/
+-      {"load-size", required_argument, NULL, 0},
+-      {"put-size", required_argument, NULL, 0},
+-      {"get-size", required_argument, NULL, 0},
+-      {"help", no_argument, NULL, 'h'},
+-      {NULL, 0, NULL, 0}};
+-
+-  // parse arguments
++  // Parsing arguments
++  int numData = 0;
++  int n_threads = 1;
++  char *input_path = (char *)std::string("../sample_input.txt").data();
++  char *persistent_path;
++
+   int c;
+-  int opt_idx;
+-  string load_file = "";
+-  while ((c = getopt_long(argc, argv, "n:dh", opts, &opt_idx)) != -1)
+-  {
+-    switch (c)
+-    {
+-    case 0:
+-      switch (opt_idx)
+-      {
+-      case 0:
+-        LOAD_SIZE = atoi(optarg);
+-        break;
+-      case 1:
+-        PUT_SIZE = atoi(optarg);
+-        break;
+-      case 2:
+-        GET_SIZE = atoi(optarg);
+-        break;
+-      case 'h':
+-        show_help(argv[0]);
+-        return 0;
+-      default:
+-        cout << (char)c << endl;
+-        abort();
+-      }
++  while ((c = getopt(argc, argv, "n:w:t:i:p:")) != -1) {
++    switch (c) {
++    case 't':
++      n_threads = atoi(optarg);
++      break;
++    case 'i':
++      input_path = optarg;
++      break;
++    case 'p':
++      persistent_path = optarg;
++      break;
++    default:
++      break;
+     }
+   }
+-  cout << "LOAD_SIZE:             " << LOAD_SIZE << endl;
+-  cout << "PUT_SIZE:              " << PUT_SIZE << endl;
+-  cout << "GET_SIZE:              " << GET_SIZE << endl;
+ 
+-  vector<uint64_t> data_base = generate_uniform_random(LOAD_SIZE + PUT_SIZE * 10);
+   NVM::env_init();
+   KvDB *db = new LetDB();
+   db->Init();
+-  uint64_t load_pos = 0;
+-  // load
+-  cout << "start loading ...." << endl;
+-  util::FastRandom ranny(18);
+-  for (load_pos; load_pos < LOAD_SIZE; load_pos++)
+-  {
+-    db->Put(data_base[load_pos], (uint64_t)data_base[load_pos]);
+-  }
+-  load_pos = LOAD_SIZE;
+-  // test put
+-  for (int i = 0; i < PUT_SIZE; i++)
+-  {
+-    db->Put(data_base[load_pos], (uint64_t)data_base[load_pos]);
+-    load_pos++;
+-  }
+-  cout << "test put " << PUT_SIZE << " kvs." << endl;
+-  // test get
+-  vector<uint64_t> rand_pos;
+-  for (uint64_t i = 0; i < GET_SIZE; i++)
+-  {
+-    rand_pos.push_back(ranny.RandUint32(0, load_pos - 1));
+-  }
+ 
+-  int wrong_get = 0;
+-  uint64_t value = 0;
+-  for (uint64_t i = 0; i < GET_SIZE; i++)
+-  {
+-    db->Get(data_base[rand_pos[i]], value);
+-    if (value != data_base[rand_pos[i]])
+-    {
+-      wrong_get++;
+-    }
++  Workload workload(input_path);
++  numData = workload.ops.size();
++  std::cerr << "Workload: " << numData << " ops" << std::endl;
++
++  // Multithreading
++  vector<future<void>> futures(n_threads);
++
++  long data_per_thread = numData / n_threads;
++
++  for (int tid = 0; tid < n_threads; tid++) {
++    int from = data_per_thread * tid;
++    int to = (tid == n_threads - 1) ? numData : from + data_per_thread;
++
++    auto f = async(launch::async,
++                   [&db, &workload](int from, int to) {
++                     std::vector<std::pair<uint64_t, uint64_t>> buf;
++                     uint64_t res;
++                     for (int i = from; i < to; ++i) {
++                       Operation & op = workload.ops[i];
++
++                       switch(op.type) {
++                        case OperationType::INSERT:
++                          db->Put(op.key, op.value);
++                          break;
++                        case OperationType::UPDATE:
++                          db->Update(op.key, op.value);
++                          break;
++
++                        case OperationType::GET:
++                          db->Get(op.key, res);
++                          break;
++
++                        case OperationType::DELETE:
++                          db->Delete(op.key);
++                          break;
++                        case OperationType::RANGE:
++                          buf.clear();
++                          db->Scan(op.key, op.value, buf);
++                          break;
++
++                        case OperationType::PRINT:
++                          db->PrintStatic();
++                          break;
++                        }
++                     }
++                   },
++                   from, to);
++    futures.push_back(move(f));
+   }
+-  cout << "test get " << GET_SIZE << " kvs, with " << wrong_get << " wrong value." << endl;
++
++  for (auto &&f : futures)
++    if (f.valid())
++      f.get();
+ 
+   delete db;
+   NVM::env_exit();

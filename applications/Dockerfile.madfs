@@ -1,0 +1,15 @@
+ARG HAWKSET_VERSION=latest
+FROM hawkset-exp:${HAWKSET_VERSION}
+
+RUN apt update
+RUN apt install -y cmake build-essential gcc-10 g++-10 
+
+RUN mv /usr/bin/g++-10 /usr/bin/g++
+
+WORKDIR $TOOL_ROOT
+RUN git clone https://github.com/WiscADSL/MadFS
+WORKDIR $TOOL_ROOT/MadFS
+RUN git apply $TOOL_ROOT/patches/madfs.diff
+RUN ./scripts/init.py ; exit 0
+RUN make debug -C /root/MadFS CMAKE_ARGS=' -DMADFS_BUILD_BENCH=ON ' BUILD_TARGETS='micro_mt'
+RUN make debug -C /root/MadFS CMAKE_ARGS='-DMADFS_CC_OCC=ON -DMADFS_CC_MUTEX=OFF -DMADFS_CC_SPINLOCK=OFF -DMADFS_CC_RWLOCK=OFF' BUILD_TARGETS='madfs'

@@ -1,0 +1,32 @@
+ARG HAWKSET_VERSION=latest
+FROM hawkset-exp:${HAWKSET_VERSION}
+
+RUN apt update
+RUN apt install -y libjemalloc-dev libtbb-dev libboost-all-dev
+
+WORKDIR $TOOL_ROOT
+RUN git clone https://github.com/cosmoss-jigu/durinn
+
+WORKDIR $TOOL_ROOT/durinn
+RUN git apply $TOOL_ROOT/patches/durinn.diff
+
+WORKDIR $TOOL_ROOT/durinn/third_party/RECIPE/P-HOT
+RUN mkdir build
+
+WORKDIR $TOOL_ROOT/durinn/third_party/RECIPE/P-HOT/build
+RUN cmake -DCMAKE_BUILD_TYPE=Debug ..
+RUN make -j 
+
+WORKDIR $TOOL_ROOT/durinn/third_party/RECIPE/P-ART
+RUN mkdir build
+
+WORKDIR $TOOL_ROOT/durinn/third_party/RECIPE/P-ART/build
+RUN cmake -DCMAKE_BUILD_TYPE=Debug ..
+RUN make -j 
+
+WORKDIR $TOOL_ROOT/durinn/third_party/RECIPE/P-Masstree
+RUN mkdir build
+
+WORKDIR $TOOL_ROOT/durinn/third_party/RECIPE/P-Masstree/build
+RUN cmake -DCMAKE_BUILD_TYPE=Debug ..
+RUN make -j 

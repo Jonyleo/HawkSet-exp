@@ -1,0 +1,6 @@
+[submodule "HawkSet"]
+	path = HawkSet
+	url = https://github.com/Jonyleo/HawkSet
+[submodule "pmrace-compare"]
+	path = pmrace-compare
+	url = https://github.com/Jonyleo/pmrace-compare

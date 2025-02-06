@@ -1,0 +1,44 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index adef0a4..881a2f2 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -107,7 +107,7 @@ if (MADFS_BUILD_BENCH)
+ 
+     target_link_libraries(leveldb_ycsb cxxopts leveldb)
+     target_link_libraries(micro_st benchmark::benchmark)
+-    target_link_libraries(micro_mt benchmark::benchmark)
++    target_link_libraries(micro_mt benchmark::benchmark madfs)
+     target_link_libraries(micro_gc cxxopts madfs) # We always want to link madfs for gc
+     target_link_libraries(bench_open cxxopts madfs)
+ endif ()
+diff --git a/bench/micro_mt.cpp b/bench/micro_mt.cpp
+index 7353c3e..53d63fd 100644
+--- a/bench/micro_mt.cpp
++++ b/bench/micro_mt.cpp
+@@ -55,7 +55,7 @@ void bench(benchmark::State& state) {
+         if (st.st_size != 0) {
+           state.SkipWithError("file size is not 0");
+         }
+-        prefill_file(fd, file_size);
++        prefill_file(fd, file_size, 1 * 1024 * 1024);
+         sleep(1);  // wait for the background thread of SplitFS to finish
+       }
+     }
+@@ -167,7 +167,7 @@ int main(int argc, char** argv) {
+     auto name = std::string("unif_") + std::to_string(read_percent) + "R";
+     benchmark::RegisterBenchmark(name.c_str(), bench<Mode::UNIF>)
+         ->Args({BLOCK_SIZE, read_percent})
+-        ->DenseThreadRange(1, MAX_NUM_THREAD)
++        ->DenseThreadRange(8,8)
+         ->Iterations(num_iter)
+         ->UseRealTime();
+   }
+@@ -176,7 +176,7 @@ int main(int argc, char** argv) {
+        {std::pair{"zipf_4k", 4096}, std::pair{"zipf_2k", 2048}}) {
+     benchmark::RegisterBenchmark(name, bench<Mode::ZIPF>)
+         ->Args({num_bytes, 90})
+-        ->DenseThreadRange(1, MAX_NUM_THREAD)
++        ->DenseThreadRange(8,8)
+         ->Iterations(num_iter)
+         ->UseRealTime();
+   }
