@@ -15,6 +15,13 @@ This document outlines the steps necessary to replicate the experiments present 
 
 HawkSet was built and tested in Ubuntu 22.04.5 LTS and requires Docker (tested for version 27.5.0), if you are using a provided machine, the environment has been setup already.
 
+Furthermore, the PMRace comparison requires Vagrant and Virtualbox, as well as the following hardware requirements:
+
+- CPU: >= 16 threads
+- DRAM: >= 32 GB
+- DISK: ~100 GB
+
+
 Before starting the evaluation:
 
 - Clone the repository https://github.com/Jonyleo/HawkSet-exp
