@@ -17,10 +17,11 @@ run_pmrace_seeds() {
 
 	HAWKSET_MOUNTS="$HAWKSET_MOUNTS -v $HAWKSET_ROOT/pmrace-compare/download:/root/to_delete"
 
-	docker run --hostname=$1 --privileged -e "TERM=xterm-color" \
-	                   --workdir /root ${HAWKSET_MOUNTS} $1:$HAWKSET_VERSION \
-	                   -c "echo Cleaning previous results ; rm to_delete/pmrace_results -rf"
+	docker run --hostname=hawkset --privileged -e "TERM=xterm-color" \
+	                   --workdir /root ${HAWKSET_MOUNTS} hawkset:$HAWKSET_VERSION \
+	                   bash -c "echo Cleaning previous results ; rm to_delete/pmrace_results -rf"
 
+	exit
 	cd ../pmrace-compare
 	vagrant up
 
@@ -37,4 +38,4 @@ run_hawkset_seeds() {
 
 
 run_pmrace_seeds
-run_hawkset_seeds
+#run_hawkset_seeds
