@@ -17,8 +17,8 @@ run_pmrace_seeds() {
 
 	HAWKSET_MOUNTS="$HAWKSET_MOUNTS -v $HAWKSET_ROOT/pmrace-compare/download:/root/to_delete"
 
-	docker run --hostname=$1 --privileged -e "TERM=xterm-color" \
-	                   --workdir /root ${HAWKSET_MOUNTS} $1:$HAWKSET_VERSION \
+	docker run --hostname=hawkset --privileged -e "TERM=xterm-color" \
+	                   --workdir /root ${HAWKSET_MOUNTS} hawkset:$HAWKSET_VERSION \
 	                   -c "echo Cleaning previous results ; rm to_delete/pmrace_results -rf"
 
 	cd ../pmrace-compare
