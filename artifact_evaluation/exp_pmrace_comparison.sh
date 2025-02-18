@@ -38,4 +38,4 @@ run_hawkset_seeds() {
 
 
 run_pmrace_seeds
-#run_hawkset_seeds
+run_hawkset_seeds
