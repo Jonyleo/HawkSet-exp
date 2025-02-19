@@ -21,6 +21,7 @@ run_pmrace_seeds() {
 	                   --workdir /root ${HAWKSET_MOUNTS} hawkset:$HAWKSET_VERSION \
 	                   bash -c "echo Cleaning previous results ; rm to_delete/pmrace_results -rf"
 
+
 	cd ../pmrace-compare
 	vagrant up
 
