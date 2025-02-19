@@ -41,8 +41,6 @@ if [[ $SUITABLE -eq 1 ]] ; then
 	exit
 fi
 
-exit
-
 echo Installing Vagrant (Requires sudo)
 
 wget -O - https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
