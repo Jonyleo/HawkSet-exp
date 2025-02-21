@@ -19,7 +19,8 @@ run_pmrace_seeds() {
 
 	docker run --hostname=hawkset --privileged -e "TERM=xterm-color" \
 	                   --workdir /root ${HAWKSET_MOUNTS} hawkset:$HAWKSET_VERSION \
-	                   -c "echo Cleaning previous results ; rm to_delete/pmrace_results -rf"
+	                   bash -c "echo Cleaning previous results ; rm to_delete/pmrace_results -rf"
+
 
 	cd ../pmrace-compare
 	vagrant up
