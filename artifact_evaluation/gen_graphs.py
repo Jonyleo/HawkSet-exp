@@ -132,6 +132,7 @@ def plot_data(output_path, args):
 		plt.gca().yaxis.set_minor_locator(LogLocator(base=2, subs="all", numticks=1000))
 
 	format_axes()
+	plt.gca().yaxis.set_major_formatter(FuncFormatter(fraction_formater))
 	legend = plot_resource([1000, 10000, 100000], data, "elapsed", "Operations (#)", "Elapsed time (s)", "", 1000, 1, \
 		ncol=7, bbox_to_anchor=(0.5, 1.3), loc='upper center', fontsize="12", frameon=False)
 	legend.remove()
@@ -167,6 +168,7 @@ def plot_data(output_path, args):
 	plt.clf()
 
 	format_axes()
+	plt.gca().yaxis.set_major_formatter(FuncFormatter(fraction_formater))
 	legend = plot_resource([1000, 10000, 100000], data, "mem", "Operations (#)", "Peak Memory Usage (GB)", "", 1000, 1000000, \
 		ncol=7, bbox_to_anchor=(0.5, 1.3), loc='upper center', fontsize="12", frameon=False)
 	legend.remove()
