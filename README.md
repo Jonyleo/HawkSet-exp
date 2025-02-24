@@ -1,6 +1,7 @@
 # HawkSet Artifact Evaluation
 
 This document describes the content of this repo, which contains all materials need to build and execute all experiments in the paper "HawkSet: Automatic, Application-Agnostic, and Efficient Concurrent PM Bug Detection", submitted to Eurosys 2025.
+DOI: https://doi.org/10.5281/zenodo.14917473.
 
 *Note*: If you are looking for HawkSet itself, as a standalone tool, you can ignore this section of the artifact, and move on to `HawkSet/README.md`
 
